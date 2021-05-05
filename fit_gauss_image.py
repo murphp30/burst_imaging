@@ -8,7 +8,6 @@ Takes fits file created by WSClean as input
 import argparse
 import pdb
 import warnings
-warnings.filterwarnings("ignore")
 
 import astropy.units as u
 import emcee
@@ -28,11 +27,12 @@ from sunpy.coordinates.frames import Helioprojective
 
 from icrs_to_helio import icrs_to_helio
 
+warnings.filterwarnings("ignore")
 def gauss_2d(xy, amp, x0, y0, sig_x, sig_y, theta, offset):
-    '''
+    """
     create a 2D gaussian with input parameters
     can't do this because it takes too long, assume it's been done outside function
-    '''
+    """
     #   x = xy.Tx.arcsec
     #   y = xy.Ty.arcsec
     (x, y) = xy

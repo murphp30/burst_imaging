@@ -11,14 +11,14 @@ parser = argparse.ArgumentParser(description='creates parset files necessary \
 parser.add_argument('msin', help='input name of Measurement Set.', metavar='MSIN')
 parser.add_argument('-t', '--trange', help='Time range over which to perform \
                     calibration. 2 arguments, must be of format YYYY-MM-DDTHH:MM:SS',
-                    nargs=2, metavar=('START','END'))
+                    nargs=2, metavar=('START', 'END'))
 parser.add_argument('-f', '--flag', help='run flag step. Default=False', action='store_true')
-parser.add_argument('-d','--dummy', help='doesn\'t run DPPP. Default=False', action='store_true')
+parser.add_argument('-d', '--dummy', help='doesn\'t run DPPP. Default=False', action='store_true')
 
 args = parser.parse_args()
 msin = args.msin
 trange = args.trange
-flag =args.flag
+flag = args.flag
 dummy = args.dummy
 
 if trange is not None:
@@ -31,7 +31,7 @@ elif trange is None:
     starttime = ' '
     endtime = ' '
 
-if msin.split('SAP')[1][:3]=='001':
+if msin.split('SAP')[1][:3] == '001':
     cal_ms = msin
     sun_ms = msin.replace('SAP001', 'SAP000')
     sb_cal = int(cal_ms.split('SB')[1][:3])
@@ -39,7 +39,7 @@ if msin.split('SAP')[1][:3]=='001':
     sb_cal = cal_ms.split('_')[-2]
     sun_ms = sun_ms.replace(sb_cal, sb_sun)
 
-elif msin.split('SAP')[1][:3]=='000':
+elif msin.split('SAP')[1][:3] == '000':
     sun_ms = msin
     cal_ms = msin.replace('SAP000', 'SAP001')
     sb_sun = int(sun_ms.split('SB')[1][:3])
