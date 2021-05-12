@@ -4,8 +4,6 @@ import argparse
 import glob
 import warnings
 
-warnings.filterwarnings("ignore")
-
 import astropy.units as u
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -19,6 +17,8 @@ from astropy.coordinates import Angle
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from icrs_to_helio import icrs_to_helio
+
+warnings.filterwarnings("ignore")
 
 
 def plot_fits(fits_in, out_png=None):

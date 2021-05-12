@@ -68,13 +68,16 @@ sun_aw = sun_ms.replace('_uv', '_uv_aw_av')
 with open('cal_aoflag.parset', 'w') as f:
     f.write('msin={} \
             \nmsout={} \
+            \nmsin.starttime={} \
+            \nmsin.endtime={} \
             \nmsin.autoweight=True \
             \nmsin.startchan = nchan/16 \
             \nmsin.nchan = nchan*14/16 \
             \nsteps=[flag, avg] \
             \nflag.type=aoflagger \
             \navg.type=average \
-            \navg.freqstep=16\n'.format(cal_ms, cal_aw))
+            \navg.timestep=5 \
+            \navg.freqstep=16\n'.format(cal_ms, cal_aw, starttime, endtime))
 
 os.system('echo Running autoweight, average and aoflag on calibrator')
 if not dummy:
@@ -96,12 +99,15 @@ if not dummy:
 with open('sun_avg.parset', 'w') as f:
     f.write('msin={} \
             \nmsout={} \
+            \nmsin.starttime={} \
+            \nmsin.endtime={} \
             \nmsin.autoweight=True \
             \nmsin.startchan = nchan/16 \
             \nmsin.nchan = nchan*14/16 \
             \nsteps=[avg] \
             \navg.type=average \
-            \navg.freqstep=16\n'.format(sun_ms, sun_aw))
+            \navg.timestep=5 \
+            \navg.freqstep=16\n'.format(sun_ms, sun_aw, starttime, endtime))
 
 os.system('echo Running autoweight and average on sun')
 if not dummy:
