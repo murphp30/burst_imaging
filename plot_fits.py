@@ -19,6 +19,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from manual_clean import convolve_model
 from icrs_to_helio import icrs_to_helio
+from radec_to_hpc_map import radec_to_hpc
 
 warnings.filterwarnings("ignore")
 
@@ -102,16 +103,16 @@ def plot_grid(fits_in, out_png=None):
     residual_fits = fits_in[:-10] + "residual.fits"
     model_fits = fits_in[:-10] + "model.fits"
 
-    helio_clean = icrs_to_helio(fits_in)
-    helio_dirty = icrs_to_helio(dirty_fits)
-    conv_model = convolve_model(model_fits)
+    helio_clean = radec_to_hpc(fits_in)#icrs_to_helio(fits_in)
+    helio_dirty = radec_to_hpc(fits_in)#icrs_to_helio(dirty_fits)
+    conv_model = radec_to_hpc(fits_in)#convolve_model(model_fits)
     #if not os.path.isfile(model_fits.replace('model.fits', 'convolved_model.fits')):
     conv_model.save(model_fits.replace('model.fits', 'convolved_model.fits'), overwrite=True)
-    helio_residual = icrs_to_helio(residual_fits)
-    helio_model = icrs_to_helio(model_fits.replace('model.fits', 'convolved_model.fits'))
+    helio_residual = radec_to_hpc(fits_in)#icrs_to_helio(residual_fits)
+    helio_model = radec_to_hpc(model_fits.replace('model.fits', 'convolved_model.fits'))#icrs_to_helio(model_fits.replace('model.fits', 'convolved_model.fits'))
 
     icrs_map = sunpy.map.Map(fits_in)
-    solar_PA = sunpy.coordinates.sun.P(icrs_map.date).deg
+    # solar_PA = sunpy.coordinates.sun.P(icrs_map.date).deg
     # fig, ax = plt.subplots(2, 2, figsize=(10, 10), sharex=True, sharey=True)
     fig = plt.figure(figsize=(10, 10))
     ax1 = fig.add_subplot(2, 2, 1, projection=helio_clean)
