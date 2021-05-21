@@ -11,7 +11,7 @@ import numpy as np
 import sunpy.map
 
 from astropy.coordinates import Angle, SkyCoord
-from scipy.signal import fftconvolve
+from scipy.signal import convolve, fftconvolve
 from matplotlib.patches import Ellipse
 
 from make_gauss import rotate_coords, FWHM_to_sig
@@ -71,14 +71,14 @@ def clean_beam(fits_file):
 def convolve_model(fits_file):
     model = make_map(fits_file)
     beam = clean_beam(fits_file)
-    image = fftconvolve(1*model.data, beam.data,'same')
+    image = fftconvolve(beam.data, model.data,'same')#convolve(1*model.data, beam.data,'same', 'direct')
     image_map = sunpy.map.Map((image, model.meta))
     image_map.plot_settings['cmap'] = cmocean.cm.solar
     return image_map
 
 def recreate_image(fits_file):
     model = convolve_model(fits_file)
-    residuals = make_map(fits_file.replace('model','residual'))
+    residuals = make_map(fits_file.replace('model.fits','residual.fits'))
     recreated_data = model.data + residuals.data
     recreated_map = sunpy.map.Map((recreated_data, model.meta))
     recreated_map.plot_settings['cmap'] = cmocean.cm.solar
@@ -117,7 +117,7 @@ if __name__ == "__main__":
     fig, ax = plt.subplots(3, 2, figsize=(10,10))
 
     for a, im in zip(ax.reshape(-1), ['dirty', 'image', 'psf', 'conv', 'residual', 'rec']):
-        fname = model.replace('model', im)
+        fname = model.replace('model.fits', im+'.fits')
         if im != 'conv' and im != 'rec':
             smap = make_map(fname)
         elif im == 'conv':
@@ -128,7 +128,7 @@ if __name__ == "__main__":
         mplot = smap.plot(axes=a, title='')
 
         if im != 'psf':
-            b = Ellipse((12.5, 6),
+            b = Ellipse((smap.top_right_coord.ra.deg + 0.2, smap.top_right_coord.dec.deg - 0.2),
                         (Angle(smap.meta['BMAJ'] * u.deg)).value,
                         (Angle(smap.meta['BMIN'] * u.deg)).value,
                         angle=(90 - smap.meta['BPA']), fill=False, color='w', ls='--')
@@ -143,14 +143,57 @@ if __name__ == "__main__":
             fig.colorbar(mplot, ax=a, fraction=0.046, pad=0.02, label='')
 
     for a, label in zip(ax.reshape(-1), ['Dirty', 'Clean', 'PSF', 'Convolved Image', 'Residuals', 'Recreated Image']):
-        a.text(13.6, 5.0, label, fontdict={'fontsize': 12, 'color': 'white'})
+        a.text(smap.bottom_left_coord.ra.deg - 0.2, smap.bottom_left_coord.dec.deg + 0.2, label, fontdict={'fontsize': 12, 'color': 'white'})
+    fig.suptitle(smap.date.isot)
+    plt.savefig(model.replace('model.fits', 'compare.png'))
     plt.tight_layout()
 
 
-    conv_model = convolve_model(model)
-    residuals = make_map(model.replace('model', 'residual'))
-    sub_data = smap.data - residuals.data
-    plt.figure()
-    plt.imshow(sub_data - conv_model.data, aspect='auto', origin='lower')
-    plt.colorbar()
-    plt.show()
+    # conv_model = convolve_model(model)
+    # residuals = make_map(model.replace('model', 'residual'))
+    # clean = make_map(model.replace('model', 'image'))
+    # rec = recreate_image(model)
+    # clean_sub_resid = clean.data - residuals.data
+    # clean_sub_rec = clean.data - rec.data
+    # sub_data = clean_sub_resid - conv_model.data
+    # plt.figure()
+    # plt.imshow(clean_sub_resid, aspect='auto', origin='lower')
+    # plt.colorbar()
+    #
+    # plt.figure()
+    # plt.imshow(conv_model.data, aspect='auto', origin='lower')
+    # plt.colorbar()
+    #
+    # plt.figure()
+    # plt.imshow(clean_sub_resid, origin='lower',
+    #            extent=[
+    #                clean.bottom_left_coord.ra.deg,
+    #                clean.top_right_coord.ra.deg,
+    #                clean.bottom_left_coord.dec.deg,
+    #                clean.top_right_coord.dec.deg
+    #            ])
+    # plt.xlabel('RA deg')
+    # plt.ylabel('DEC deg')
+    # plt.title('clean image - residuals')
+    # plt.colorbar(fraction=0.046, pad=0.02, label='Jy/beam')
+    # plt.tight_layout()
+    # plt.savefig(model.replace('model.fits', 'cleannoresid.png'))
+
+    # plt.figure()
+    # plt.imshow(clean_sub_rec, origin='lower',
+    #            extent=[
+    #                clean.bottom_left_coord.ra.deg,
+    #                clean.top_right_coord.ra.deg,
+    #                clean.bottom_left_coord.dec.deg,
+    #                clean.top_right_coord.dec.deg
+    #            ])
+    # plt.xlabel('RA deg')
+    # plt.ylabel('DEC deg')
+    # plt.title('Difference between recreated and clean image')
+    # plt.colorbar(fraction=0.046, pad=0.02, label='Jy/beam')
+    # plt.tight_layout()
+    # plt.savefig(model.replace('model.fits', 'rec_diff.png'))
+    # plt.show()
+
+
+    plt.close('all')

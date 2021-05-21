@@ -46,13 +46,15 @@ with tables.table(msin, ack=False) as t:
     dt = TimeDelta(t.col('INTERVAL')[0], format='sec')
     t0 = t.getcol('TIME')[0]  # seconds from 1858/11/17 MJD reference
     t0 = Time(t0 / 24 / 3600, format='mjd')  # convert to days
-
-t1 = trange.start - t0
-int0 = t1 / dt
+if trange.start < t0:
+    int0 = 0
+else:
+    t1 = trange.start - t0
+    int0 = t1 / dt
 
 # int0 = trange.start-obs_start
 # int0 = int(np.floor(int0/dt))
-int0 = int(np.floor(int0))
+    int0 = int(np.floor(int0))
 
 int_len = trange.dt / dt
 int_len = int(np.floor(int_len))

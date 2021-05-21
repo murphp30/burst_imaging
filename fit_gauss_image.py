@@ -6,12 +6,17 @@ Pearse Murphy 30/03/20 COVID-19
 Takes fits file created by WSClean as input
 """
 import argparse
+import os
 import warnings
 
 import astropy.units as u
+import corner
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import sunpy.map
+
 from astropy.coordinates import Angle, SkyCoord
 from lmfit import Parameters, Model
 from matplotlib.gridspec import GridSpec
@@ -19,6 +24,7 @@ from matplotlib.patches import Ellipse
 from sunpy.coordinates.frames import Helioprojective
 
 from icrs_to_helio import icrs_to_helio
+from manual_clean import convolve_model
 
 warnings.filterwarnings("ignore")
 
@@ -133,11 +139,11 @@ def make_params(smap, fwhm_x=10, fwhm_y=18, theta=0.1, offset=0):
     init_params = make_init_params(smap, fwhm_x, fwhm_y, theta, offset)
     params = Parameters()
     params.add_many(("amp", init_params["amp"], True, 0.5 * init_params["amp"], None),
-                    ("x0", init_params["x0"], True, init_params["x0"] - 600, init_params["x0"] + 600),
-                    ("y0", init_params["y0"], True, init_params["y0"] - 600, init_params["y0"] + 600),
+                    ("x0", init_params["x0"], True, init_params["x0"] - 60, init_params["x0"] + 60),
+                    ("y0", init_params["y0"], True, init_params["y0"] - 60, init_params["y0"] + 60),
                     ("sig_x", init_params["sig_x"], True, 0, 2 * init_params["sig_x"]),
                     ("sig_y", init_params["sig_y"], True, 0, 2 * init_params["sig_y"]),
-                    ("theta", init_params["theta"], True, 0, np.pi),
+                    ("theta", init_params["theta"], True, -np.pi/2, np.pi/2),
                     ("offset", init_params["offset"], True, smap.data.min(), smap.data.max()))
     return params
 
@@ -151,7 +157,13 @@ def rotate_zoom(smap, x0, y0, theta):
     rot = zoom.rotate(-theta)
     return rot
 
+def burst_centre(smap, gauss_centre):
+    zoom_centre = smap.world_to_pixel(SkyCoord(gauss_centre))
+    zoom_xy = sunpy.map.all_coordinates_from_map(smap)
+    x_cen = int(zoom_centre.x.round().value)
+    y_cen = int(zoom_centre.y.round().value)
 
+    return x_cen, y_cen, zoom_xy
 def plot_nice(smap, fit, save=True):
     """Plot rotated sunpy map and overlay gaussian fit"""
     smap.plot_settings['cmap'] = 'viridis'
@@ -162,21 +174,25 @@ def plot_nice(smap, fit, save=True):
     fit_map = sunpy.map.Map(fit.best_fit.reshape(smap.data.shape), smap.meta)
     rot_fit = rotate_zoom(fit_map, x0, y0, theta)
     rot_helio = rotate_zoom(smap, x0, y0, theta)
-    zoom_centre = rot_helio.world_to_pixel(SkyCoord(gauss_centre))
-    zoom_xy = sunpy.map.all_coordinates_from_map(rot_helio)
-    x_cen = int(zoom_centre.x.round().value)
-    y_cen = int(zoom_centre.y.round().value)
+
+    # zoom_centre = rot_helio.world_to_pixel(SkyCoord(gauss_centre))
+    # zoom_xy = sunpy.map.all_coordinates_from_map(rot_helio)
+    # x_cen = int(zoom_centre.x.round().value)
+    # y_cen = int(zoom_centre.y.round().value)
+    x_cen, y_cen, zoom_xy = burst_centre(rot_helio, gauss_centre)
+
     new_dims = [99, 99] * u.pix  # Resample data to 100 * 100 for histogram plot
     helio_resample = rot_helio.resample(new_dims)
-    resample_xy = sunpy.map.all_coordinates_from_map(helio_resample)
+    # resample_xy = sunpy.map.all_coordinates_from_map(helio_resample)
+    resample_x_cen, resample_y_cen, resample_xy = burst_centre(helio_resample, gauss_centre)
 
-    # take a slice through the middle index, 49. Should do this properly at somepoint.
-    x_1D_helio, y_1D_helio = helio_resample.data[49, :], helio_resample.data[:, 49]
+    # take a slice through the middle index.
+    x_1D_helio, y_1D_helio = helio_resample.data[resample_y_cen, :], helio_resample.data[:, resample_x_cen]
     x_1D_fit, y_1D_fit = rot_fit.data[y_cen, :], rot_fit.data[:, x_cen]
     zoom_xarr = zoom_xy[y_cen, :]
     zoom_yarr = zoom_xy[:, x_cen]
-    resample_xarr = resample_xy[49, :]
-    resample_yarr = resample_xy[:, 49]
+    resample_xarr = resample_xy[resample_y_cen, :]
+    resample_yarr = resample_xy[:, resample_x_cen]
     coord_x = rot_helio.pixel_to_world([0, (zoom_xy.shape[1] - 1)] * u.pix, [y_cen, y_cen] * u.pix)
     coord_y = rot_helio.pixel_to_world([x_cen, x_cen] * u.pix, [0, (zoom_xy.shape[0] - 1)] * u.pix)
 
@@ -294,17 +310,49 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     infits = args.infits
-    helio_map = icrs_to_helio(infits)
+    model = infits.replace('image.fits', 'model.fits')
+    conv_model = convolve_model(model)
+    if not os.path.isfile(model.replace('model', 'convolved_model')):
+        conv_model.save(model.replace('model', 'convolved_model'))
+
+    helio_map = icrs_to_helio(model.replace('model', 'convolved_model'))
+    resid_map = icrs_to_helio(infits.replace('image.fits', 'residual.fits'))
+    # helio_map = icrs_to_helio(infits)
     xy_mesh = sunpy.map.all_coordinates_from_map(helio_map)
     xy_arcsec = [xy_mesh.Tx.arcsec, xy_mesh.Ty.arcsec]
 
     # Fitting stuff
 
     gmodel = Model(gauss_2d)
-    params = make_params(helio_map, 9, 14, 0.1, 0)
+    params = make_params(helio_map, 10, 14, np.pi/4, 0.1 * np.max(helio_map.data))
     error = np.ones_like(np.ravel(helio_map.data)) * 0.01 * np.max(helio_map.data)
+    # error = np.ravel(resid_map.data)
     print("Beginning fit for " + infits)
-    gfit = gmodel.fit(np.ravel(helio_map.data), params, xy=xy_arcsec, weights=1 / error)
-
+    gfit = gmodel.fit(np.ravel(helio_map.data), params, xy=xy_arcsec, weights= 1/error)
     plot_nice(helio_map, gfit)
-    plt.show()
+    # helio_resample = helio_map.resample([199, 199]*u.pix)
+    # xy_mesh_resample = sunpy.map.all_coordinates_from_map(helio_resample)
+    # xy_arcsec_resample = [xy_mesh_resample.Tx.arcsec, xy_mesh_resample.Ty.arcsec]
+    # emcee_kws = dict(steps=1000, burn=20, thin=10, is_weighted=False,
+    #                  progress=True)
+    # emcee_params = gfit.params.copy()
+    # emcee_params.add('__lnsigma', value=np.log(0.1), min=np.log(0.001), max=np.log(2.0))
+    # gfit_mc = gmodel.fit(np.ravel(helio_resample.data), xy=xy_arcsec_resample,
+    #                      params=emcee_params, method='emcee', fit_kws=emcee_kws)
+    # plot_nice(helio_resample, gfit_mc)
+    #
+    # emcee_corner = corner.corner(gfit_mc.flatchain, labels=gfit_mc.var_names,
+    #                              truths=list(gfit_mc.params.valuesdict().values()))
+
+    df_dict = gfit.best_values.copy()
+    for key in gfit.params.keys():
+        df_dict[key+'_std'] = gfit.params[key].stderr
+    df = pd.DataFrame(df_dict.values(), df_dict.keys(), columns=[helio_map.date.isot])
+
+    if os.path.isfile("burst_properties.pkl"):
+        df0 = pd.read_pickle("burst_properties.pkl")
+        df1 = pd.concat([df0,df], axis='columns')
+        df1.to_pickle("burst_properties.pkl")
+    else:
+        df.to_pickle("burst_properties.pkl")
+    # plt.show()
