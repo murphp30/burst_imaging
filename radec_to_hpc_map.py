@@ -36,14 +36,14 @@ from sunpy.coordinates import frames, sun
 def radec_to_hpc(file):
     ##############################################################################
     # We will first begin be reading in the header and data from the FITS file.
-    hdu = fits.open(sunpy.data.sample.LOFAR_IMAGE)
-    header = hdu[0].header
+    with fits.open(file) as hdu:
+        header = hdu[0].header
 
     #####################################################################################
     # The data in this file is in a datacube structure to hold difference frequencies and
     # polarizations. We are only interested in the image at one frequency (the only data
     # in the file) so we index the data array to be the 2D data of interest.
-    data = hdu[0].data[0, 0, :, :]
+        data = hdu[0].data#[0, 0, :, :]
 
     ################################################################################
     # We can inspect the header, for example, we can print the coordinate system and
@@ -53,8 +53,8 @@ def radec_to_hpc(file):
     ###############################################################################
     # Lets pull out the observation time and wavelength from the header, we will use
     # these to create our new header.
-    obstime = Time(header['date-obs'])
-    frequency = header['crval3']*u.Hz
+    obstime = Time(header['DATE-OBS'])
+    frequency = header['CRVAL3']*u.Hz
 
 
     ###############################################################################
@@ -74,8 +74,8 @@ def radec_to_hpc(file):
     # We can then define the reference coordinate in terms of RA-DEC from the header information.
     # Here we are using the ``obsgeoloc`` keyword argument to take into account that the observer is not
     # at the center of the Earth (i.e. the GCRS origin). The distance here is the Sun-observer distance.
-    reference_coord = SkyCoord(header['crval1']*u.Unit(header['cunit1']),
-                               header['crval2']*u.Unit(header['cunit2']),
+    reference_coord = SkyCoord(header['CRVAL1']*u.Unit(header['CUNIT1']),
+                               header['CRVAL2']*u.Unit(header['CUNIT2']),
                                frame='gcrs',
                                obstime=obstime,
                                obsgeoloc=lofar_gcrs.cartesian,
@@ -90,8 +90,8 @@ def radec_to_hpc(file):
     # Now we need to get the other parameters from the header that will be used
     # to create the new header - here we can get the cdelt1 and cdelt2 which are
     # the spatial scales of the data axes.
-    cdelt1 = (np.abs(header['cdelt1'])*u.deg).to(u.arcsec)
-    cdelt2 = (np.abs(header['cdelt2'])*u.deg).to(u.arcsec)
+    cdelt1 = (np.abs(header['CDELT1'])*u.deg).to(u.arcsec)
+    cdelt2 = (np.abs(header['CDELT2'])*u.deg).to(u.arcsec)
 
     ##################################################################################
     # Finally, we need to specify the orientation of the HPC coordinate grid because
@@ -114,8 +114,8 @@ def radec_to_hpc(file):
     # than the fits convention of 1 indexed.
 
     new_header = sunpy.map.make_fitswcs_header(data, reference_coord_arcsec,
-                                               reference_pixel=u.Quantity([header['crpix1']-1,
-                                                                           header['crpix2']-1]*u.pixel),
+                                               reference_pixel=u.Quantity([header['CRPIX1']-1,
+                                                                           header['CRPIX2']-1]*u.pixel),
                                                scale=u.Quantity([cdelt1, cdelt2]*u.arcsec/u.pix),
                                                rotation_angle=-P1,
                                                wavelength=frequency.to(u.MHz).round(2),

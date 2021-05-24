@@ -2,3 +2,6 @@
 *.log
 __pycache__
 .idea
+.python-version
+._radec_to_hpc_map.py
+
