@@ -45,14 +45,14 @@ clip = u.Quantity([5, 95] * u.percent)
 bf = LOFAR_BF(f, trange)
 tarr = np.arange(bf.data.shape[0]) * bf.dt
 tarr = tarr + bf.trange.start
-new_dt = 0.167772  # 0.167772 seconds is interferometric temporal resoultion
+new_dt = 0.167772  # 0.167772 seconds is interferometric temporal resolution
 new_dt_index = int(np.round(new_dt / bf.dt.sec))
 sig = new_dt_index / (2 * np.sqrt(2 * np.log(2)))  # FWHM is interferometric time res.
 freqs = [51]  # np.arange(20,80,10)
 if plot:
     fig, ax = plt.subplots(figsize=(10, 8))
     bf.plot(ax=ax, bg_subtract=True, clip_interval=clip)
-# peaks_df = []#pd.DataFrame()
+peaks_df = []#pd.DataFrame()
 max_peaks_df = []
 for freq in freqs:
     loc = np.where(abs(bf.freqs.to(u.MHz) - freq * u.MHz) == np.min(abs(bf.freqs.to(u.MHz) - freq * u.MHz)))[0][0]
@@ -68,9 +68,9 @@ for freq in freqs:
     bg_mean = means[np.where(stds == np.min(stds))[0][0]]
 
     peaks, _ = find_peaks(smooth,
-                          height=np.mean(dslice) + 5 * bg_std,
-                          distance=4 * new_dt_index,
-                          prominence=bg_std)
+                          height= np.mean(dslice) + 3 * bg_std,
+                          distance= 4 * new_dt_index)#,
+                          # prominence= bg_std)
     # width = new_dt_index)
     # prominence=(np.max(smooth)-np.mean(smooth))/10)
     # peaks, _ = find_peaks(dslice,
@@ -83,8 +83,8 @@ for freq in freqs:
     # max_peak = peaks[np.where(dslice[peaks] == np.max(dslice[peaks]))[0][0]]
     max_peak = peaks[np.where(smooth[peaks] == np.max(smooth[peaks]))[0][0]]
     max_peak_time = tarr[max_peak]
-    # peak_df = pd.DataFrame(tarr[peaks], columns=[bf.freqs[loc].to(u.MHz).value])
-    # peaks_df.append(peak_df) #= peaks_df.append(peak_df)
+    peak_df = pd.DataFrame(tarr[peaks], columns=[bf.freqs[loc].to(u.MHz).value])
+    peaks_df.append(peak_df) #= peaks_df.append(peak_df)
     print('Maximum peak at {}'.format(max_peak_time))
     max_peak_df = pd.DataFrame([max_peak_time.isot], columns=[bf.freqs[loc].to(u.MHz).value])
     max_peaks_df.append(max_peak_df)  # = peaks_df.append(peak_df)
@@ -107,16 +107,16 @@ for freq in freqs:
 save_path = "./"  # "/mnt/murphp30_data/paper2"
 save_png = save_path + "/peak_times_{}_{}.png".format(trange.start.isot[:-4].replace(':', ''),
                                                       trange.end.isot[11:-4].replace(':', ''))
-if plot:
-    plt.savefig(save_png)
-# peaks_df = pd.concat(peaks_df, axis=1)
+# if plot:
+#     plt.savefig(save_png)
+peaks_df = pd.concat(peaks_df, axis=1)
 max_peaks_df = pd.concat(max_peaks_df, axis=1)
 save_pickle = save_path + "/peak_times_{}_{}.pickle".format(trange.start.isot[:-4].replace(':', ''),
                                                             trange.end.isot[11:-4].replace(':', ''))
-with open("peak_times.txt", 'a') as peak_file:
-    peak_file.write(max_peak_time.isot)
-    peak_file.write('\n')
-# peaks_df.to_pickle(save_pickle)
-max_peaks_df.to_pickle(save_pickle)
+# with open("peak_times.txt", 'a') as peak_file:
+#     peak_file.write(max_peak_time.isot)
+#     peak_file.write('\n')
+peaks_df.to_pickle(save_pickle)
+# max_peaks_df.to_pickle(save_pickle)
 # plt.close()
 plt.show()

@@ -14,8 +14,9 @@ import sunpy.map
 
 from multiprocessing import Pool
 
-from astropy.coordinates import Angle, SkyCoord
+from astropy.coordinates import Angle, SkyCoord, EarthLocation
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from sunpy.coordinates import frames
 
 from manual_clean import convolve_model
 from icrs_to_helio import icrs_to_helio
@@ -112,35 +113,54 @@ def plot_grid(fits_in, out_png=None):
     helio_model = icrs_to_helio(model_fits.replace('model.fits', 'convolved_model.fits'))
 
     # icrs_map = sunpy.map.Map(fits_in)
-    # solar_PA = sunpy.coordinates.sun.P(icrs_map.date).deg
-    # fig, ax = plt.subplots(2, 2, figsize=(10, 10), sharex=True, sharey=True)
-    fig = plt.figure(figsize=(10, 10))
-    ax1 = fig.add_subplot(2, 2, 1, projection=helio_clean)
-    ax2 = fig.add_subplot(2, 2, 2, sharey=ax1, projection=helio_clean)
-    ax3 = fig.add_subplot(2, 2, 3, sharex=ax1, projection=helio_clean)
-    ax4 = fig.add_subplot(2, 2, 4, sharex=ax1, sharey=ax1, projection=helio_clean)
+    fig, ax = plt.subplots(2, 2, figsize=(10, 10), sharex=True, sharey=True)
+    # fig = plt.figure(figsize=(10, 10))
+    # ax1 = fig.add_subplot(2, 2, 1, projection=helio_clean)
+    # ax2 = fig.add_subplot(2, 2, 2, sharey=ax1, projection=helio_clean)
+    # ax3 = fig.add_subplot(2, 2, 3, sharex=ax1, projection=helio_clean)
+    # ax4 = fig.add_subplot(2, 2, 4, sharex=ax1, sharey=ax1, projection=helio_clean)
 
-    for smap, a, label in zip([helio_dirty, helio_clean, helio_residual, helio_model], [ax1, ax2, ax3, ax4],
+    for smap, a, label in zip([helio_dirty, helio_clean, helio_residual, helio_model], ax.flatten(),
                               ['Dirty', 'Clean', 'Residual', 'Model']):
         smap.plot_settings['title'] = str(np.round(smap.meta['wavelnth'], 2)) + " MHz " + smap.date.isot
         smap.plot_settings['cmap'] = 'viridis'
         # smap.plot_settings['norm'] = matplotlib.colors.Normalize(vmin=0, vmax=500)
         im = smap.plot(axes=a, title='')
-        smap.draw_limb(color='r')
-        sun_centre = sunpy.coordinates.sun.sky_position(t=smap.date, equinox_of_date='J2000')
-        sun_centre_coord = SkyCoord(sun_centre[0], sun_centre[1], sunpy.coordinates.sun.earth_distance(smap.date))
+        smap.draw_limb()
+        # core_ITRF = np.array((3826577.066, 461022.948, 5064892.786))
+        # lofar_loc = EarthLocation.from_geocentric(*core_ITRF, u.m)
+        # lofar_gcrs = SkyCoord(lofar_loc.get_gcrs(smap.date))
+        # sun_centre_coord = sunpy.coordinates.sun.sky_position(t=smap.date, equinox_of_date=False)
+        # sun_centre_coord = SkyCoord(sun_centre_coord[0], sun_centre_coord[1], sunpy.coordinates.sun.earth_distance(smap.date))
+        # sun_centre_coord = sun_centre_coord.transform_to(frames.Helioprojective(observer=lofar_gcrs, obstime=smap.date))
+        # sun_centre_coord = SkyCoord(sun_centre[0], sun_centre[1], sunpy.coordinates.sun.earth_distance(smap.date))
         # smap.draw_grid()
-        # divider = make_axes_locatable(a)
-        # cax = divider.append_axes("right", size="5%", pad=0.05)
-        # fig.colorbar(im, cax=cax)
-        # a.text(-3000, 2900, label, fontdict={'fontsize': 12, 'color': 'white'})
+        # lon, lat = a.coords
+        # lat.set_ticklabel_position('l')
+        # lat.set_axislabel_position('l')
+        # lon.set_ticklabel_position('b')
+        # lon.set_axislabel_position('b')
+        divider = make_axes_locatable(a)
+        cax = divider.append_axes("right", size="5%", pad=0.05)
+        # cax.grid(False)
+        # cax_x = cax.coords[0]
+        # cax_y = cax.coords[1]
+        # cax_x.set_ticks_visible(False)
+        # cax_x.set_ticklabel_visible(False)
+        # cax_y.set_ticklabel_position('r')
+        # cax_y.set_axislabel_position('r')
+        # cax_y.set_ticks_position('r')
+        # cax_y.set_axislabel('')
+        fig.colorbar(im, cax=cax)
+        a.text(-3000, 2900, label, fontdict={'fontsize': 12, 'color': 'white'})
+        solar_PA = sunpy.coordinates.sun.P(smap.date).deg
 
-        # b = Ellipse((-2500, -2500),
-        #             Angle(icrs_map.meta['BMAJ'] * u.deg).arcsec, #/ abs(icrs_map.scale[0].to(u.arcsec / u.pix).value),
-        #             Angle(icrs_map.meta['BMIN'] * u.deg).arcsec, # / abs(icrs_map.scale[1].to(u.arcsec / u.pix).value),
-        #             angle=(90 + icrs_map.meta['BPA']) - solar_PA, fill=False, color='w', ls='--')
-        # a.add_patch(b)
-        a.plot_coord(sun_centre_coord, '+', color='white')
+        b = Ellipse((-2500, -2500),
+                    Angle(smap.meta['BMAJ'] * u.deg).arcsec, #/ abs(smap.scale[0].to(u.arcsec / u.pix).value),
+                    Angle(smap.meta['BMIN'] * u.deg).arcsec, # / abs(smap.scale[1].to(u.arcsec / u.pix).value),
+                    angle=(90 + smap.meta['BPA']) - solar_PA, fill=False, color='w', ls='--')
+        a.add_patch(b)
+        # a.plot_coord(sun_centre_coord, '+', color='white')
         a.set_ylabel('Solar Y (arcsec)')
         a.set_xlabel('Solar X (arcsec)')
 
