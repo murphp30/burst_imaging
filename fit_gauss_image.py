@@ -105,9 +105,9 @@ def make_init_params(smap, fwhm_x, fwhm_y, theta, offset):
     smap : `sunpy.map.mapbase.GenericMap`
         sunpy map to fit
     fwhm_x : float
-        initial guess of the full width at half maximum height (FWHM) in the x direction
+        initial guess of the full width at half maximum height (FWHM) in the x direction in arcmin
     fwhm_y : float
-        initial guess of the FWHM in the y direction
+        initial guess of the FWHM in the y direction in arcmin
     theta : float
         initial guess of position angle of gaussian
     offset : float
@@ -139,12 +139,12 @@ def make_params(smap, fwhm_x=10, fwhm_y=18, theta=0.1, offset=0):
     init_params = make_init_params(smap, fwhm_x, fwhm_y, theta, offset)
     params = Parameters()
     params.add_many(("amp", init_params["amp"], True, 0.5 * init_params["amp"], None),
-                    ("x0", init_params["x0"], True, init_params["x0"] - 60, init_params["x0"] + 60),
-                    ("y0", init_params["y0"], True, init_params["y0"] - 60, init_params["y0"] + 60),
+                    ("x0", init_params["x0"], True, init_params["x0"] - 150, init_params["x0"] + 150),
+                    ("y0", init_params["y0"], True, init_params["y0"] - 150, init_params["y0"] + 150),
                     ("sig_x", init_params["sig_x"], True, 0, 2 * init_params["sig_x"]),
-                    ("sig_y", init_params["sig_y"], True, 0, 2 * init_params["sig_y"]),
-                    ("theta", init_params["theta"], True, -np.pi/2, np.pi/2),
-                    ("offset", init_params["offset"], True, smap.data.min(), smap.data.max()))
+                    ("sig_y", init_params["sig_y"], True, 0.5 * init_params["sig_x"], 2 * init_params["sig_y"]),
+                    ("theta", init_params["theta"], True, 0, np.pi/6),
+                    ("offset", init_params["offset"], True, 0.01 * smap.data.min(), smap.data.max()))
     return params
 
 
@@ -315,7 +315,7 @@ if __name__ == '__main__':
     if not os.path.isfile(model.replace('model', 'convolved_model')):
         conv_model.save(model.replace('model', 'convolved_model'))
 
-    helio_map = icrs_to_helio(model.replace('model', 'convolved_model'))
+    helio_map = icrs_to_helio(infits)#(model.replace('model', 'convolved_model'))
     resid_map = icrs_to_helio(infits.replace('image.fits', 'residual.fits'))
     # helio_map = icrs_to_helio(infits)
     xy_mesh = sunpy.map.all_coordinates_from_map(helio_map)
@@ -324,7 +324,7 @@ if __name__ == '__main__':
     # Fitting stuff
 
     gmodel = Model(gauss_2d)
-    params = make_params(helio_map, 10, 14, np.pi/4, 0.1 * np.max(helio_map.data))
+    params = make_params(helio_map, 10, 14, 0.01, 0 * np.max(helio_map.data))
     error = np.ones_like(np.ravel(helio_map.data)) * 0.01 * np.max(helio_map.data)
     # error = np.ravel(resid_map.data)
     print("Beginning fit for " + infits)
@@ -347,12 +347,15 @@ if __name__ == '__main__':
     df_dict = gfit.best_values.copy()
     for key in gfit.params.keys():
         df_dict[key+'_std'] = gfit.params[key].stderr
+    df_dict['redchi'] = gfit.redchi
     df = pd.DataFrame(df_dict.values(), df_dict.keys(), columns=[helio_map.date.isot])
 
-    if os.path.isfile("burst_properties.pkl"):
-        df0 = pd.read_pickle("burst_properties.pkl")
+    pickle_path = "burst_properties_imagefit{}.pkl".format(helio_map.date.isot[:10])
+
+    if os.path.isfile(pickle_path):
+        df0 = pd.read_pickle(pickle_path)
         df1 = pd.concat([df0,df], axis='columns')
-        df1.to_pickle("burst_properties.pkl")
+        df1.to_pickle(pickle_path)
     else:
-        df.to_pickle("burst_properties.pkl")
+        df.to_pickle(pickle_path)
     # plt.show()

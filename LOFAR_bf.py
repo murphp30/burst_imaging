@@ -141,8 +141,10 @@ class LOFAR_BF:
                                     self.freqs.to(u.MHz).value[0]],
                             **imshow_args)
         else:
+            t0 = int(np.floor((self.trange.start - self.obs_start).sec / self.dt.sec))
+            t1 = int(np.floor((self.trange.end - self.obs_start).sec / self.dt.sec))
             ret = ax.imshow(data.T, aspect="auto",
-                            extent=[self.trange.start.plot_date, self.trange.end.plot_date,
+                            extent=[(self.obs_start+t0*self.dt).plot_date, (self.obs_start+t1*self.dt).plot_date,
                                     self.freqs.to(u.MHz).value[-1], self.freqs.to(u.MHz).value[0]],
                             **imshow_args)
         ax.xaxis_date()

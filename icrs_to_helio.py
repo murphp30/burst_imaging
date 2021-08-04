@@ -18,24 +18,27 @@ def icrs_to_helio(file):
     hdu = fits.open(file)
     header = hdu[0].header
     data = np.squeeze(hdu[0].data)
-    obstime = header['date-obs'] # observational time
+    obstime = Time(header['date-obs']) # observational time
     freq = header['crval3']*u.Hz # frequency of observation
 
     # we need to get the observer location to convert to HPC coordinates. 
     # this is required, especially for when looking at obskects close to  the Moon
     # lofar_loc = EarthLocation.of_address('Exloo, The Netherlands')
-    core_ITRF = np.array((3826577.066, 461022.948, 5064892.786))
+    # core_ITRF = np.array((3826577.066, 461022.948, 5064892.786))
+    core_ITRF = np.array((3826577.462, 461022.624, 5064892.526))
     lofar_loc = EarthLocation.from_geocentric(*core_ITRF, u.m)
-    lofar_coord = SkyCoord(lofar_loc.get_itrs(Time(obstime)))
+    lofar_gcrs = SkyCoord(lofar_loc.get_gcrs(obstime))
 
     # reference coordinate from FITS file
     reference_coord = SkyCoord(header['crval1']*u.deg, header['crval2']*u.deg, 
                            frame='gcrs',
-                           obstime=obstime, 
-                           distance=sun.earth_distance(obstime),
+                           obstime=obstime,
+                           obsgeoloc=lofar_gcrs.cartesian,
+                           obsgeovel=lofar_gcrs.velocity.to_cartesian(),
+                           distance=lofar_gcrs.hcrs.distance,
                            equinox='J2000')
     
-    reference_coord_arcsec = reference_coord.transform_to(frames.Helioprojective(observer=lofar_coord))
+    reference_coord_arcsec = reference_coord.transform_to(frames.Helioprojective(observer=lofar_gcrs))
 
 
     # cdelt in arcsec rather than degrees
@@ -46,7 +49,7 @@ def icrs_to_helio(file):
     P1 = sun.P(obstime)
 
     header_test = sunpy.map.make_fitswcs_header(data, reference_coord_arcsec, 
-                                            reference_pixel=u.Quantity([header['crpix1'], header['crpix2']]*u.pixel),
+                                            reference_pixel=u.Quantity([header['crpix1']-1, header['crpix2']-1]*u.pixel),
                                             scale=u.Quantity([cdelt1, cdelt2]*u.arcsec/u.pix),
                                             rotation_angle=-P1,
                                             wavelength=freq.to(u.MHz), 

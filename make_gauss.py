@@ -7,7 +7,7 @@ from astropy.coordinates import Angle
 import astropy.units as u
 
 infits = sys.argv[1]
-rot_deg = 30  # float(sys.argv[2])
+rot_deg = 15  # float(sys.argv[2])
 rot_angle = Angle(rot_deg * u.deg).rad
 import pdb
 
@@ -22,11 +22,12 @@ def rotate_coords(x, y, theta):
 def fit_2d_gauss(xy, amp, x0, y0, sig_x, sig_y, theta, offset):
     (x, y) = xy
     x, y = rotate_coords(x, y, theta)
-    x0 = float(x0)
-    y0 = float(y0)
-    a = ((np.cos(theta) ** 2) / (2 * sig_x ** 2)) + ((np.sin(theta) ** 2) / (2 * sig_y ** 2))
-    b = ((np.sin(2 * theta)) / (4 * sig_x ** 2)) - ((np.sin(2 * theta)) / (4 * sig_y ** 2))
-    c = ((np.sin(theta) ** 2) / (2 * sig_x ** 2)) + ((np.cos(theta) ** 2) / (2 * sig_y ** 2))
+    x0, y0 = rotate_coords(x0, y0 , theta)
+    # x0 = float(x0)
+    # y0 = float(y0)
+    # a = ((np.cos(theta) ** 2) / (2 * sig_x ** 2)) + ((np.sin(theta) ** 2) / (2 * sig_y ** 2))
+    # b = ((np.sin(2 * theta)) / (4 * sig_x ** 2)) - ((np.sin(2 * theta)) / (4 * sig_y ** 2))
+    # c = ((np.sin(theta) ** 2) / (2 * sig_x ** 2)) + ((np.cos(theta) ** 2) / (2 * sig_y ** 2))
     # g = amp*np.exp(-(a*((x-x0)**2) + (2*b*(x-x0)*(y-y0)) + c*((y-y0)**2))) + offset
     g = amp * np.exp(-(((x - x0) ** 2) / (2 * sig_x ** 2) + ((y - y0) ** 2) / (2 * sig_y ** 2))) + offset
     return g.ravel()
@@ -47,7 +48,7 @@ def FWHM_to_sig(FWHM):
     return c
 
 if __name__ == '__main__':
-    with fits.open("../MS/20190404/models/13022887-t0001-dirty.fits") as psf:
+    with fits.open("../MS/test_gauss_psf-image.fits") as psf:
         psf_data = psf[0].data[0, 0]
         header = psf[0].header
     # print(header)
@@ -81,7 +82,7 @@ if __name__ == '__main__':
         x = x - x[-1] / 2
         y = y - y[-1] / 2
         x0 = Angle(1000 * u.arcsec)
-        y0 = Angle(500 * u.arcsec)
+        y0 = Angle(750 * u.arcsec)
         # dpix =  1.39e-5
         # x = Angle(np.arange(-0.0142739,0.0142739,dpix)*u.rad)
         # y = Angle(np.arange(-0.0142739,0.0142739,dpix)*u.rad)
@@ -96,7 +97,7 @@ if __name__ == '__main__':
         # gauss3 = fit_2d_gauss((xx.arcmin,yy.arcmin), 3, 1250*scale.arcmin, 500*scale.arcmin, sigx3.arcmin, sigy3.arcmin, np.pi/3 , 0)
         # gauss3 = gauss3.reshape(len(x), len(y))
 
-        gauss = fit_2d_gauss((xx.arcmin, yy.arcmin), 1, x0.arcmin, y0.arcmin, sigx.arcmin, sigy.arcmin, rot_angle, 0)
+        gauss = fit_2d_gauss((xx.rad, yy.rad), 1, x0.rad, y0.rad, sigx.rad, sigy.rad, rot_angle, 0)
         gauss = gauss.reshape(len(x), len(y))
         dd = dirac_del_2d((xx.arcmin, yy.arcmin), x0.arcmin, y0.arcmin)
         # multi_gauss = gauss1+gauss2+gauss3

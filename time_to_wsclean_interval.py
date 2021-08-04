@@ -34,6 +34,7 @@ def get_interval(msin, trange):
         t0 = t.getcol('TIME')[0]  # seconds from 1858/11/17 MJD reference
         t0 = Time(t0 / 24 / 3600, format='mjd')  # convert to days
     if trange.start < t0:
+        print("trange start is before observation start, interval will start at 0")
         int0 = 0
     else:
         t1 = trange.start - t0
@@ -41,10 +42,10 @@ def get_interval(msin, trange):
 
         # int0 = trange.start-obs_start
         # int0 = int(np.floor(int0/dt))
-        int0 = int(np.floor(int0))
+        int0 = int(np.round(int0))
 
     int_len = trange.dt / dt
-    int_len = int(np.floor(int_len))
+    int_len = int(np.round(int_len))
     int1 = int0 + int_len
 
     print("interval: {} {}".format(int0, int1))
@@ -66,7 +67,7 @@ if __name__ == "__main__":
     trange = args.trange
     pickle = args.pickle
 
-    if pickle is not None:
+    if pickle is None:
         if len(trange) == 2:
             trange = TimeRange(trange[0], trange[1])  # ("2019-04-04T14:08:00", "2019-04-04T14:17:00")
         elif len(trange) == 1:
@@ -79,6 +80,7 @@ if __name__ == "__main__":
     else:
         df = pd.read_pickle(pickle)
         for t in df[df.columns[0]]:
-            tstart = Time(trange[0])
-            trange = TimeRange(tstart, tstart + 1 * u.s)
+            tstart = Time(t)
+            trange = TimeRange(tstart, tstart + 0.1 * u.s)
+            get_interval(msin, trange)
 

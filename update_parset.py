@@ -76,7 +76,7 @@ with open('cal_aoflag.parset', 'w') as f:
             \nsteps=[flag, avg] \
             \nflag.type=aoflagger \
             \navg.type=average \
-            \navg.timestep=5 \
+            \n#avg.timestep=5 \
             \navg.freqstep=16\n'.format(cal_ms, cal_aw, starttime, endtime))
 
 os.system('echo Running autoweight, average and aoflag on calibrator')
@@ -106,7 +106,7 @@ with open('sun_avg.parset', 'w') as f:
             \nmsin.nchan = nchan*14/16 \
             \nsteps=[avg] \
             \navg.type=average \
-            \navg.timestep=5 \
+            \n#avg.timestep=5 \
             \navg.freqstep=16\n'.format(sun_ms, sun_aw, starttime, endtime))
 
 os.system('echo Running autoweight and average on sun')

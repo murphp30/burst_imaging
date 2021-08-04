@@ -8,6 +8,7 @@ import warnings
 import astropy.units as u
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+from matplotlib.gridspec import GridSpec
 from matplotlib.patches import Ellipse
 import numpy as np
 import sunpy.map
@@ -17,7 +18,9 @@ from multiprocessing import Pool
 from astropy.coordinates import Angle, SkyCoord, EarthLocation
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from sunpy.coordinates import frames
+from sunpy.time import TimeRange
 
+from LOFAR_bf import LOFAR_BF
 from manual_clean import convolve_model
 from icrs_to_helio import icrs_to_helio
 # from radec_to_hpc_map import radec_to_hpc
@@ -31,14 +34,23 @@ def plot_fits(fits_in, out_png=None):
     smap = sunpy.map.Map(fits_in)
     smap.meta['wavelnth'] = smap.meta['crval3'] / 1e6
     smap.meta['waveunit'] = "MHz"
+
     fig = plt.figure()
     helio_smap = icrs_to_helio(fits_in)
+    trange = TimeRange(helio_smap.date - 0.5 * u.s, helio_smap.date + 0.5 * u.s)
+    # bf = LOFAR_BF(fits_in.split('_SB')[0] + '_B003_S0_P000_bf.h5', trange)
+    # loc = np.where(abs(bf.freqs.to(u.MHz) - helio_smap.wavelength) == np.min(abs(bf.freqs.to(u.MHz) - helio_smap.wavelength)))[0][0]
+    # dslice = np.mean(bf.data[:, loc - 8:loc + 8], axis=1)
     solar_PA = sunpy.coordinates.sun.P(smap.date).deg
     if fits_in[-8:] != "psf.fits":
+        # gs = GridSpec(1, 1)
+        # ax0 = fig.add_subplot(gs[0], projection=helio_smap)
+        # ax1 = fig.add_subplot(gs[1])
         ax0 = fig.add_subplot(1, 1, 1, projection=helio_smap)
         helio_smap.plot_settings["title"] = str(
             np.round(helio_smap.meta['wavelnth'], 2)) + " MHz " + helio_smap.date.isot
-        helio_smap.plot(cmap='viridis')
+        helio_smap.plot(axes=ax0,cmap='viridis')
+        # ax1.plot(dslice)
         if fits_in[-10:] != "model.fits":
             helio_smap.draw_limb(color='r')
 
@@ -46,17 +58,21 @@ def plot_fits(fits_in, out_png=None):
                     Angle(smap.meta['BMIN'] * u.deg).arcsec / abs(smap.scale[1].to(u.arcsec / u.pix).value),
                     angle=(90 + smap.meta['BPA']) - solar_PA, fill=False, color='w', ls='--')
     else:
+
         ax0 = fig.add_subplot(1, 1, 1, projection=smap)
-        smap.plot()
+        smap.plot(axes=ax0)
+
         b = Ellipse((smap.reference_pixel[0].value, smap.reference_pixel[1].value),
                     Angle(smap.meta['BMAJ'] * u.deg).arcsec / abs(smap.scale[0].to(u.arcsec / u.pix).value),
                     Angle(smap.meta['BMIN'] * u.deg).arcsec / abs(smap.scale[1].to(u.arcsec / u.pix).value),
                     angle=90 + smap.meta['BPA'], fill=False, color='w', ls='--')
+
     ax0.add_patch(b)
+
     plt.colorbar()
     print("Saving to {}".format(out_png))
     plt.savefig(out_png)
-    plt.close()
+    # plt.close()
 
 
 def plot_compare(fits_in, out_png=None):
