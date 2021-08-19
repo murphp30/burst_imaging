@@ -88,7 +88,7 @@ for freq in freqs:
     # max_peak = peaks[np.where(dslice[peaks] == np.max(dslice[peaks]))[0][0]]
     max_peak = peaks[np.where(smooth[peaks] == np.max(smooth[peaks]))[0][0]]
     max_peak_time = tarr[max_peak]
-    peak_df = pd.DataFrame(tarr[peaks], columns=[bf.freqs[loc].to(u.MHz).value])
+    peak_df = pd.DataFrame(tarr.isot[peaks], columns=[bf.freqs[loc].to(u.MHz).value])
     peaks_df.append(peak_df) #= peaks_df.append(peak_df)
     print('Maximum peak at {}'.format(max_peak_time))
     print('Bursts found: {}'.format(len(peaks)))
@@ -113,12 +113,12 @@ for freq in freqs:
 save_path = "./"  # "/mnt/murphp30_data/paper2"
 save_png = save_path + "/peak_times_{}_{}.png".format(trange.start.isot[:-4].replace(':', ''),
                                                       trange.end.isot[11:-4].replace(':', ''))
-if plot:
-    plt.savefig(save_png)
-peaks_df = pd.concat(peaks_df, axis=1)
-max_peaks_df = pd.concat(max_peaks_df, axis=1)
-save_pickle = save_path + "/peak_times_{}_{}.pkl".format(trange.start.isot[:-4].replace(':', ''),
-                                                            trange.end.isot[11:-4].replace(':', ''))
+# if plot:
+#     plt.savefig(save_png)
+# peaks_df = pd.concat(peaks_df, axis=1)
+# max_peaks_df = pd.concat(max_peaks_df, axis=1)
+# save_pickle = save_path + "/peak_times_{}_{}.pkl".format(trange.start.isot[:-4].replace(':', ''),
+#                                                             trange.end.isot[11:-4].replace(':', ''))
 # with open("peak_times.txt", 'a') as peak_file:
 #     peak_file.write(max_peak_time.isot)
 #     peak_file.write('\n')

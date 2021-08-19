@@ -22,12 +22,19 @@ from lmfit import Parameters, Model
 from matplotlib.gridspec import GridSpec
 from matplotlib.patches import Ellipse
 from sunpy.coordinates.frames import Helioprojective
+from sunpy.sun.constants import average_angular_size as R_av_ang
 
 from icrs_to_helio import icrs_to_helio
 from manual_clean import convolve_model
 
 warnings.filterwarnings("ignore")
 
+
+def rotate_coords(x, y, theta):
+    # rotate coordinates x y anticlockwise by theta
+    x_p = x * np.cos(theta) + y * np.sin(theta)
+    y_p = -x * np.sin(theta) + y * np.cos(theta)
+    return x_p, y_p
 
 def gauss_2d(xy, amp, x0, y0, sig_x, sig_y, theta, offset):
     """
@@ -57,10 +64,13 @@ def gauss_2d(xy, amp, x0, y0, sig_x, sig_y, theta, offset):
     (x, y) = xy
     x0 = float(x0)
     y0 = float(y0)
-    a = ((np.cos(theta) ** 2) / (2 * sig_x ** 2)) + ((np.sin(theta) ** 2) / (2 * sig_y ** 2))
-    b = ((np.sin(2 * theta)) / (4 * sig_x ** 2)) - ((np.sin(2 * theta)) / (4 * sig_y ** 2))
-    c = ((np.sin(theta) ** 2) / (2 * sig_x ** 2)) + ((np.cos(theta) ** 2) / (2 * sig_y ** 2))
-    g = amp * np.exp(-(a * ((x - x0) ** 2) + 2 * b * (x - x0) * (y - y0) + c * ((y - y0) ** 2))) + offset
+    x, y = rotate_coords(x, y, theta)
+    x0, y0 = rotate_coords(x0, y0 , theta)
+    # a = ((np.cos(theta) ** 2) / (2 * sig_x ** 2)) + ((np.sin(theta) ** 2) / (2 * sig_y ** 2))
+    # b = ((np.sin(2 * theta)) / (4 * sig_x ** 2)) - ((np.sin(2 * theta)) / (4 * sig_y ** 2))
+    # c = ((np.sin(theta) ** 2) / (2 * sig_x ** 2)) + ((np.cos(theta) ** 2) / (2 * sig_y ** 2))
+    # g = amp * np.exp(-(a * ((x - x0) ** 2) + 2 * b * (x - x0) * (y - y0) + c * ((y - y0) ** 2))) + offset
+    g = amp * np.exp(-(((x - x0) ** 2) / (2 * sig_x ** 2) + ((y - y0) ** 2) / (2 * sig_y ** 2))) + offset
     return g.ravel()
 
 
@@ -141,10 +151,10 @@ def make_params(smap, fwhm_x=10, fwhm_y=18, theta=0.1, offset=0):
     params.add_many(("amp", init_params["amp"], True, 0.5 * init_params["amp"], None),
                     ("x0", init_params["x0"], True, init_params["x0"] - 150, init_params["x0"] + 150),
                     ("y0", init_params["y0"], True, init_params["y0"] - 150, init_params["y0"] + 150),
-                    ("sig_x", init_params["sig_x"], True, 0, 2 * init_params["sig_x"]),
-                    ("sig_y", init_params["sig_y"], True, 0.5 * init_params["sig_x"], 2 * init_params["sig_y"]),
-                    ("theta", init_params["theta"], True, 0, np.pi/6),
-                    ("offset", init_params["offset"], True, 0.01 * smap.data.min(), smap.data.max()))
+                    ("sig_x", init_params["sig_x"], True, 0, 2 * R_av_ang.value / (2 * np.sqrt(2 * np.log(2)))),
+                    ("sig_y", init_params["sig_y"], True, 0, 2 * R_av_ang.value / (2 * np.sqrt(2 * np.log(2)))),
+                    ("theta", init_params["theta"], False, -np.pi/6, np.pi/6),
+                    ("offset", init_params["offset"], True, 0.01 * smap.data.min(), smap.data.min()))
     return params
 
 
@@ -295,7 +305,7 @@ def plot_nice(smap, fit, save=True):
     lat.set_axislabel('arcmin')
     lon.grid(alpha=0, linestyle='solid')
     lat.grid(alpha=0, linestyle='solid')
-    ax.text(50, 700, "FWMH major: {:.2f}' \nFWHM minor: {:.2f}'".format(fwhmx, fwhmy), color='w')
+    ax.text(50, 700, "{} \nFWMH major: {:.2f}' \nFWHM minor: {:.2f}'".format(helio_map.date.isot, fwhmx, fwhmy), color='w')
 
     gs.tight_layout(fig, rect=[0.05, 0.05, 0.95, 0.95])
     if save:
@@ -315,7 +325,7 @@ if __name__ == '__main__':
     if not os.path.isfile(model.replace('model', 'convolved_model')):
         conv_model.save(model.replace('model', 'convolved_model'))
 
-    helio_map = icrs_to_helio(infits)#(model.replace('model', 'convolved_model'))
+    helio_map = icrs_to_helio(model.replace('model', 'convolved_model'))
     resid_map = icrs_to_helio(infits.replace('image.fits', 'residual.fits'))
     # helio_map = icrs_to_helio(infits)
     xy_mesh = sunpy.map.all_coordinates_from_map(helio_map)
@@ -324,7 +334,7 @@ if __name__ == '__main__':
     # Fitting stuff
 
     gmodel = Model(gauss_2d)
-    params = make_params(helio_map, 10, 14, 0.01, 0 * np.max(helio_map.data))
+    params = make_params(helio_map, 10, 10, 0, 0.1)
     error = np.ones_like(np.ravel(helio_map.data)) * 0.01 * np.max(helio_map.data)
     # error = np.ravel(resid_map.data)
     print("Beginning fit for " + infits)
@@ -350,7 +360,7 @@ if __name__ == '__main__':
     df_dict['redchi'] = gfit.redchi
     df = pd.DataFrame(df_dict.values(), df_dict.keys(), columns=[helio_map.date.isot])
 
-    pickle_path = "burst_properties_imagefit{}.pkl".format(helio_map.date.isot[:10])
+    pickle_path = "burst_properties_modelfit{}.pkl".format(helio_map.date.isot[:10])
 
     if os.path.isfile(pickle_path):
         df0 = pd.read_pickle(pickle_path)

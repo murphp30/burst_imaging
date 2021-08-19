@@ -7,7 +7,7 @@ from astropy.coordinates import Angle
 import astropy.units as u
 
 infits = sys.argv[1]
-rot_deg = 15  # float(sys.argv[2])
+rot_deg = 10  # float(sys.argv[2])
 rot_angle = Angle(rot_deg * u.deg).rad
 import pdb
 
@@ -69,8 +69,8 @@ if __name__ == '__main__':
         # sigx = FWHM_to_sig(Angle(150*u.arcsec))#2*sun_rad)#_pix) #sun_rad_pix
         # sigy = FWHM_to_sig(Angle(300*u.arcsec))#2*sun_rad)#_pix) #sun_rad_pix
 
-        sigx = FWHM_to_sig(Angle(10 * u.arcmin))  # 2*sun_rad)#_pix) #sun_rad_pix
-        sigy = FWHM_to_sig(Angle(15 * u.arcmin))
+        sigx = FWHM_to_sig(Angle(8 * u.arcmin))  # 2*sun_rad)#_pix) #sun_rad_pix
+        sigy = FWHM_to_sig(Angle(12 * u.arcmin))
         # sigx2 = FWHM_to_sig(Angle(5*u.arcmin))#.deg/scale.deg)
         # sigy2 = FWHM_to_sig(Angle(7*u.arcmin))#.deg/scale.deg)
 
