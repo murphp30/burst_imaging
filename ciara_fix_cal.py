@@ -77,7 +77,7 @@ Nparms = len(parms)
 Num = int(np.ceil(np.sqrt(Nparms))) # number of plots needed - each station has phase and amp - then each pahse and amp has real and imag
 # fp, axp = plt.subplots(Num, Num,sharex=True, sharey=True, figsize=(20,20))
 #make the subplot notation correct
-rows,columns=make_rows_cols(Num)
+# rows,columns=make_rows_cols(Num)
 print('---------------------')
 print('resolving corrupted calibration data')
 print('---------------------')

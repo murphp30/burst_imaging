@@ -493,7 +493,7 @@ def main():
     median_amp = args.median_amp
     plot_international = args.plot_international
     refstation = int(args.refstation)
-
+    # pdb.set_trace()
     if args.freq != 0:
         reffreq = float(args.freq) * 1e6
     else:

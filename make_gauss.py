@@ -97,7 +97,7 @@ if __name__ == '__main__':
         # gauss3 = fit_2d_gauss((xx.arcmin,yy.arcmin), 3, 1250*scale.arcmin, 500*scale.arcmin, sigx3.arcmin, sigy3.arcmin, np.pi/3 , 0)
         # gauss3 = gauss3.reshape(len(x), len(y))
 
-        gauss = fit_2d_gauss((xx.rad, yy.rad), 1, x0.rad, y0.rad, sigx.rad, sigy.rad, rot_angle, 0)
+        gauss = fit_2d_gauss((xx, yy), 1, x0, y0, sigx, sigy, rot_angle, 0)
         gauss = gauss.reshape(len(x), len(y))
         dd = dirac_del_2d((xx.arcmin, yy.arcmin), x0.arcmin, y0.arcmin)
         # multi_gauss = gauss1+gauss2+gauss3

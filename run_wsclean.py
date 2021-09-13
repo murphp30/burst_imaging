@@ -23,7 +23,7 @@ def wsclean_command(msin, niter, int0, int1, ints_out, output):
         output = 'wsclean'
     wsclean_string = "wsclean -mem 85 -no-reorder -no-update-model-required -mgain 0.8 -weight briggs 0 \
 -size 1024 1024 -scale 5asec -pol I -data-column CORRECTED_DATA -taper-gaussian 90 \
--multiscale -niter {} -fit-beam -interval {} {} -intervals-out {} -name {} {}".format(niter,
+-multiscale -niter {} -interval {} {} -intervals-out {} -name {} {}".format(niter,
                                                                                      int0,
                                                                                      int1,
                                                                                      ints_out,
@@ -74,6 +74,6 @@ if __name__ == "__main__":
             int0, int1 = get_interval(msin, trange)
             if ints_out == 0:
                 ints_out = int1 - int0
-            wsclean_string = wsclean_command(msin, niter, int0, int1, ints_out, output + t.isot)
+            wsclean_string = wsclean_command(msin, niter, int0, int1, ints_out, output + t)
             print("Now imaging burst {} out of {}".format(i, len(df[df.columns[0]])))
             os.system(wsclean_string)

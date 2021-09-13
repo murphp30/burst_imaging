@@ -41,7 +41,7 @@ def get_interval(msin, trange):
         int0 = t1 / dt
 
         # int0 = trange.start-obs_start
-        # int0 = int(np.floor(int0/dt))
+            # int0 = int(np.floor(int0/dt))
         int0 = int(np.round(int0))
 
     int_len = trange.dt / dt

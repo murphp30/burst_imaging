@@ -24,11 +24,12 @@ import matplotlib.patheffects as path_effects
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import sunpy.map
 
 from itertools import product
 
 from astropy.constants import au, e, eps0, c, m_e, R_sun
-from astropy.coordinates import Angle, SkyCoord
+from astropy.coordinates import Angle, EarthLocation, SkyCoord
 from astropy.time import Time, TimeDelta
 from casacore import tables
 from lmfit import Model, Parameters, minimize, report_fit
@@ -37,6 +38,7 @@ from matplotlib.gridspec import GridSpec
 from matplotlib.patches import Circle, Ellipse
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from mpl_toolkits.mplot3d import Axes3D
+from sunpy.coordinates import frames, sun
 from sunpy.sun.constants import average_angular_size as R_av_ang
 from sunpy.time import TimeRange
 
@@ -44,6 +46,7 @@ sys.path.insert(1, '/mnt/LOFAR-PSP/pearse_2ndperihelion/scripts')
 sys.path.insert(1, '/Users/murphp30/mnt/LOFAR-PSP/pearse_2ndperihelion/scripts')
 plt.style.use('seaborn-colorblind')
 
+from icrs_to_helio import icrs_map_to_helio
 
 def sig_to_fwhm(sig):
     """
@@ -71,8 +74,17 @@ def rotate_coords(u, v, theta):
     v_p = -u * np.sin(theta) + v * np.cos(theta)
     return u_p, v_p
 
+def fourier_shift(u, v, x0, y0):
+    shift = np.exp(-2 * np.pi * 1j * (u * x0 + v * -y0))
+    return shift
 
-def gauss_2D(u, v, I0, x0, y0, sig_x, sig_y, theta, C):
+def gauss_amp(u, v, I0, sig_x, sig_y, theta):
+    u_p, v_p = rotate_coords(u, v, -theta)
+    V = I0 * np.exp(
+        -((((sig_x ** 2) * ((2 * np.pi * u_p) ** 2)) / 2) + (((sig_y ** 2) * ((2 * np.pi * v_p) ** 2)) / 2)))
+    return V
+
+def gauss_2D(u, v, I0, x0, y0, sig_x, sig_y, theta):
     """
     Create a 2D Gaussian in visibility space
     Inputs: u: array of u coordinates
@@ -85,18 +97,25 @@ def gauss_2D(u, v, I0, x0, y0, sig_x, sig_y, theta, C):
             theta: position angle of gaussian
             C: offset from 0
     """
-    pa = -theta  # reverse gauss position angle because we're rotating the gaussian to align with our coordinates
+    # pa = -theta  # reverse gauss position angle because we're rotating the gaussian to align with our coordinates
     # it doesn't work if you don't so that's reason enough...
 
-    u_p, v_p = rotate_coords(u, v, pa)
-    x0_p, y0_p = rotate_coords(x0, y0, pa)
-    amp = I0 #/ (2 * np.pi)
+    # u_p, v_p = rotate_coords(u, v, pa)
+    # x0_p, y0_p = rotate_coords(x0, y0, pa)
+    # amp = I0 #/ (2 * np.pi)
 
-    shift = np.exp(-2 * np.pi * 1j * (u * x0 + v * -y0))
-    V = shift * (amp * np.exp(
-        -((((sig_x ** 2) * ((2 * np.pi * u_p) ** 2)) / 2) + (((sig_y ** 2) * ((2 * np.pi * v_p) ** 2)) / 2))) + C)
+    shift = fourier_shift(u, v, x0, y0)#np.exp(-2 * np.pi * 1j * (u * x0 + v * -y0))
+    amp = gauss_amp(u, v, I0, sig_x, sig_y, theta)
+    V = shift * amp #* np.exp(
+        # -((((sig_x ** 2) * ((2 * np.pi * u_p) ** 2)) / 2) + (((sig_y ** 2) * ((2 * np.pi * v_p) ** 2)) / 2)))
     return V
 
+def gauss_2D_real(xy, amp, x0, y0, sig_x, sig_y, theta, offset):
+    (x, y) = xy
+    x, y = rotate_coords(x, y, theta)
+    x0, y0 = rotate_coords(x0, y0 , theta)
+    g = amp * np.exp(-(((x - x0) ** 2) / (2 * sig_x ** 2) + ((y - y0) ** 2) / (2 * sig_y ** 2))) + offset
+    return g.ravel()
 
 def residual(params, u, v, data, weights=None, fit="amplitude"):
     """
@@ -108,35 +127,38 @@ def residual(params, u, v, data, weights=None, fit="amplitude"):
             weights: array the same shape as data of measurement uncertainties
     """
     params_dict = params.valuesdict()
-
+    # pdb.set_trace()
     if fit == "amplitude":
-        model = gauss_2D(u.value, v.value,
-                         params_dict['I0'], 0, 0,
-                         params_dict['sig_x'], params_dict['sig_y'], params_dict['theta'], 0)
+        model = gauss_amp(u.data.value, v.data.value, params_dict['I0'], params_dict['sig_x'], params_dict['sig_y'], params_dict['theta'])
+        # model = gauss_2D(u.value, v.value,
+        #                  params_dict['I0'], 0, 0,
+        #                  params_dict['sig_x'], params_dict['sig_y'], 0, 0)
         if weights is None:
             resid = np.abs(data) - np.abs(model)
         else:
-            resid = (np.abs(data) - np.abs(model)) * weights
+            resid = (np.abs(data) - model) * weights
     elif fit == "phase":
-        model = gauss_2D(u.value, v.value,
-                         params_dict['I0'], params_dict['x0'], params_dict['y0'],
-                         params_dict['sig_x'], params_dict['sig_y'], params_dict['theta'], 0)
+        model = fourier_shift(u.data.value, v.data.value, params_dict['x0'], params_dict['y0'])
+        # model = gauss_2D(u.value, v.value,
+        #                  params_dict['I0'], params_dict['x0'], params_dict['y0'],
+        #                  params_dict['sig_x'], params_dict['sig_y'], 0, 0)
         if weights is None:
             resid = np.angle(data) - np.angle(model)
         else:
             resid = (np.angle(data) - np.angle(model)) * weights
     elif fit == "all":
-        model = gauss_2D(u.value, v.value,
+        model = gauss_2D(u.data.value, v.data.value,
                          params_dict['I0'], params_dict['x0'], params_dict['y0'],
-                         params_dict['sig_x'], params_dict['sig_y'], params_dict['theta'], 0)
+                         params_dict['sig_x'], params_dict['sig_y'], params_dict['theta'])
         if weights is None:
-            resid = np.abs(data - model)#np.sqrt((np.abs(data - model))**2 + (np.angle(data - model))**2)
+            resid = np.abs(data - model) + np.angle(data - model)#np.sqrt((np.abs(data - model))**2 + (np.angle(data - model))**2)
         else:
             resid = (np.abs(data - model) + np.angle(data - model))* weights
             #np.abs((data - model)) * weights
                 # np.sqrt((np.abs(data - model))**2 + (np.angle(data - model))**2)*weights
             #np.sqrt((data.real - model.real)**2 + (data.imag - model.imag)**2) * weights#np.abs((data - model)) * weights
     else:
+        print("Invalid residul please choose either 'amplitude', 'phase' or 'all'")
         resid = None
     return resid
 
@@ -180,34 +202,45 @@ class LOFAR_vis:
         self.trange = trange
         with tables.table(self.fname + 'ANTENNA', ack=False) as tant:
             self.nbaselines = nbaselines(tant.nrows())
-        with tables.table(self.fname + 'FIELD', ack=False) as tfield:
-            phase_dir = tfield.col('PHASE_DIR')[0][0]
-            self.phase_dir = SkyCoord(*phase_dir * u.rad)
         with tables.table(self.fname + 'SPECTRAL_WINDOW', ack=False) as tspec:
             freq = tspec.col('REF_FREQUENCY')[0] * u.Hz
             self.wlen = (c / freq).decompose()
             self.freq = freq.to(u.MHz)
         self.__get_data()
+        with tables.table(self.fname + 'FIELD', ack=False) as tfield:
+            phase_dir = tfield.col('PHASE_DIR')[0][0]
+            core_ITRF = np.array((3826577.462, 461022.624, 5064892.526))
+            lofar_loc = EarthLocation.from_geocentric(*core_ITRF, u.m)
+            self.lofar_gcrs = SkyCoord(lofar_loc.get_gcrs(self.time))
+            self.phase_dir = SkyCoord(*phase_dir * u.rad,
+                                      frame='gcrs',
+                                      obstime=self.time.isot,
+                                      obsgeoloc=self.lofar_gcrs.cartesian,
+                                      obsgeovel=self.lofar_gcrs.velocity.to_cartesian(),
+                                      distance=self.lofar_gcrs.hcrs.distance,
+                                      equinox='J2000')
+
 
     def __get_data(self):
         with tables.table(self.fname, ack=False) as t:
             self.dt = t.col('INTERVAL')[0] * u.s
-            ts = self.trange.start.mjd * 24 * 3600
-            te = self.trange.end.mjd * 24 * 3600
+            #need to correct below for off-by-one error compared to time_to_wsclean_interval.get_interval
+            ts = (self.trange.start - 0.16*u.s).mjd * 24 * 3600
+            te = (self.trange.end - 0.16*u.s).mjd * 24 * 3600
 
             with tables.taql('SELECT * FROM $t WHERE TIME > $ts AND TIME < $te') as t1:
                 antenna1 = t1.getcol('ANTENNA1')
                 antenna2 = t1.getcol('ANTENNA2')
                 cross_cors = np.where(antenna1 != antenna2)
-                self.flag = t1.getcol('FLAG')[cross_cors]
-                self.antenna1 = antenna1[cross_cors]
-                self.antenna2 = antenna2[cross_cors]
-                self.uvw = (t1.getcol('UVW')[cross_cors]) * u.m / self.wlen
+                self.flag = t1.getcol('FLAG')[:, 0, :][cross_cors]
+                self.antenna1 = np.ma.array(antenna1[cross_cors], mask=self.flag[:,0])
+                self.antenna2 = np.ma.array(antenna2[cross_cors], mask=self.flag[:,0])
+                self.uvw = np.ma.array(t1.getcol('UVW')[cross_cors] * u.m / self.wlen, mask=self.flag[:,:3])
                 self.time = Time(t1.getcol('TIME', rowincr=int(self.nbaselines)) / 24 / 3600, format='mjd')
-                self.data = t1.getcol('CORRECTED_DATA')[:, 0, :][cross_cors]
-                self.uncal = t1.getcol('DATA')[:, 0, :][cross_cors]
-                self.model = t1.getcol('MODEL_DATA')[:, 0, :][cross_cors]
-                self.weight = t1.getcol('WEIGHT_SPECTRUM')[:, 0, :][cross_cors]
+                self.data = np.ma.array(t1.getcol('CORRECTED_DATA')[:, 0, :][cross_cors], mask=self.flag)
+                self.uncal = np.ma.array(t1.getcol('DATA')[:, 0, :][cross_cors], mask=self.flag)
+                self.model = np.ma.array(t1.getcol('MODEL_DATA')[:, 0, :][cross_cors], mask=self.flag)
+                self.weight = np.ma.array(t1.getcol('WEIGHT_SPECTRUM')[:, 0, :][cross_cors], mask=self.flag)
 
     def stokes(self, param):
         """
@@ -231,8 +264,15 @@ class LOFAR_vis:
         I don't remember why I wrote this
         Outputs a plot of the uv coverage for the MS
         """
-        plt.scatter(self.uvw[:, 0], self.uvw[:, 1])
-
+        uv_dist = np.sqrt(self.uvw[:, 0] ** 2 + self.uvw[:, 1] ** 2)
+        ang_scales = Angle((1 / uv_dist) * u.rad)
+        plt.figure()
+        plt.plot(ang_scales.arcmin, np.abs(self.stokes('I').data), 'o')
+        plt.title('Amplitude vs Angular Scale')
+        plt.ylabel('Amplitude (arbitrary)')
+        plt.xlabel('Angular scale (arcmin)')
+        plt.xscale('log')
+        plt.show()
 def briggs(w_i, R):
     """
     Hacky implementation of Briggs robustness weighting
@@ -242,7 +282,7 @@ def briggs(w_i, R):
     f_sq = (5*(10**-R))/(np.sum(W_k**2)/np.sum(w_i))
     return w_i/(1+W_k*f_sq)
 
-def plot_fit(vis, data, fit, plot=True):
+def plot_fit(vis, data, fit, plot=True, save=True, outdir="vis_fits/30MHz/"):
     """
     Plots data and fit to data, MCMC corner plot and the chain itself
     Inputs: vis = LOFAR_vis object for burst
@@ -251,13 +291,22 @@ def plot_fit(vis, data, fit, plot=True):
             fit = lmfit.minimizer.MinimizerResult of MCMC fit
             plot = boolean. False runs plt.close() after each plot, default = True/
     """
-    us = np.arange(np.min(vis.uvw[:, 0].value), np.max(vis.uvw[:, 0].value), 10)
-    vs = np.arange(np.min(vis.uvw[:, 1].value), np.max(vis.uvw[:, 1].value), 10)
+    us = np.arange(np.min(vis.uvw[:, 0].data.value), np.max(vis.uvw[:, 0].data.value), 10)
+    vs = np.arange(np.min(vis.uvw[:, 1].data.value), np.max(vis.uvw[:, 1].data.value), 10)
     uu, vv = np.meshgrid(us, vs)
-    fit_data = gauss_2D(uu, vv, *[fit.params[key].value for key in fit.params.keys()])
+    fit_data = gauss_2D(uu,
+                        vv,
+                        fit.params['I0'],
+                        fit.params['x0'],
+                        fit.params['y0'],
+                        fit.params['sig_x'],
+                        fit.params['sig_y'],
+                        fit.params['theta'])
+    # gauss_2D(uu,vv,*[fit.params[key].value for key in fit.params.keys()])
+
 
     fig, ax = plt.subplots(figsize=(13, 7), nrows=1, ncols=2, sharex=True, sharey=True)
-    ax[0].scatter(vis.uvw[:630, 0], vis.uvw[:630, 1], c=np.abs(data))
+    ax[0].scatter(vis.uvw[:, 0], vis.uvw[:, 1], c=np.abs(data))
     ax[0].imshow(np.abs(fit_data), aspect='auto', origin='lower', extent=[us[0], us[-1], vs[0], vs[-1]])
     ax[0].set_title("Absolute value (amplitude)")
     ax[0].set_xlim([-1000, 1000])
@@ -277,7 +326,8 @@ def plot_fit(vis, data, fit, plot=True):
     ax[1].set_ylim([-1000, 1000])
     ax[1].set_xlabel("u")
     ax[1].set_ylabel("v")
-    plt.savefig("visibility_fit_amp_phase_{}.png".format(vis.time.isot[0]))
+    if save:
+        plt.savefig(outdir+"visibility_fit_amp_phase_{}MHz_{}.png".format(int(np.round(vis.freq.value)), vis.time.isot[0]))
     if not plot:
         plt.close()
     # uz = np.arange(-500, 500, 1)
@@ -293,14 +343,29 @@ def plot_fit(vis, data, fit, plot=True):
     # ax.set_xlabel("u")
     # ax.set_ylabel("v")
     # ax.set_zlabel("Amplitdue (arbitrary)")
-    # plt.savefig("visibility_fit_3d_amp_{}.png".format(vis.time.isot[0]))
+    # if save:
+    #   plt.savefig("visibility_fit_3d_amp_{}.png".format(vis.time.isot[0]))
 
-    uv_dist = np.sqrt(vis.uvw[:630, 0] ** 2 + vis.uvw[:630, 1] ** 2)
+    uv_dist = np.sqrt(vis.uvw[:, 0] ** 2 + vis.uvw[:, 1] ** 2)
     ang_scales = Angle((1 / uv_dist) * u.rad)
     us_p = rotate_coords(us, np.zeros_like(us), fit.params['theta'])
     vs_p = rotate_coords(np.zeros_like(vs), vs, fit.params['theta'])
-    fit_data_u = gauss_2D(us_p[0], us_p[1], *[fit.params[key].value for key in fit.params.keys()])
-    fit_data_v = gauss_2D(vs_p[0], vs_p[1], *[fit.params[key].value for key in fit.params.keys()])
+    fit_data_u = gauss_2D(us_p[0],
+                          us_p[1],
+                          fit.params['I0'],
+                          fit.params['x0'],
+                          fit.params['y0'],
+                          fit.params['sig_x'],
+                          fit.params['sig_y'],
+                          fit.params['theta']) #*[fit.params[key].value for key in fit.params.keys()])
+    fit_data_v = gauss_2D(vs_p[0],
+                          vs_p[1],
+                          fit.params['I0'],
+                          fit.params['x0'],
+                          fit.params['y0'],
+                          fit.params['sig_x'],
+                          fit.params['sig_y'],
+                          fit.params['theta'])#*[fit.params[key].value for key in fit.params.keys()])
     ang_scales_u = Angle((1 / np.sqrt(us_p[0] ** 2 + us_p[1] ** 2)) * u.rad)
     ang_scales_v = Angle((1 / np.sqrt(vs_p[0] ** 2 + vs_p[1] ** 2)) * u.rad)
 
@@ -314,35 +379,70 @@ def plot_fit(vis, data, fit, plot=True):
     plt.ylabel('Amplitude (arbitrary)')
     plt.xlabel('Angular scale (arcmin)')
     plt.xscale('log')
-    plt.savefig("visibility_fit_amp_angscale_{}.png".format(vis.time.isot[0]))
+    if save:
+        plt.savefig(outdir+"visibility_fit_amp_angscale_{}MHz_{}.png".format(int(np.round(vis.freq.value)), vis.time.isot[0]))
     if not plot:
         plt.close()
     fit_vals = [fit.params['I0'].value,
                 fit.params['x0'].value,
                 fit.params['y0'].value,
                 fit.params['sig_x'].value,
-                fit.params['sig_y'].value,
-                fit.params['theta'].value
+                fit.params['sig_y'].value
+                # fit.params['theta'].value
                 # fit.params['C'].value
                 # fit.params ['__lnsigma'].value
                 ]
-    labels = ['I0', 'x0', 'y0', 'sig_x', 'sig_y', 'theta']  # , 'lnsigma']
+    labels = fit.var_names #['I0', 'x0', 'y0', 'sig_x', 'sig_y']#, 'theta']  # , 'lnsigma']
+    val_dict = fit.params.valuesdict()
     corner.corner(fit.flatchain, labels=labels)  # , truths=truths)
-    plt.savefig("visibility_fit_corner_{}.png".format(vis.time.isot[0]))
+    if save:
+        plt.savefig(outdir+"visibility_fit_corner_{}MHz_{}.png".format(int(np.round(vis.freq.value)), vis.time.isot[0]))
     if not plot:
         plt.close()
     fig, ax = plt.subplots(fit.nvarys, sharex=True, figsize=(8,7))
     for i in range(fit.nvarys):
         ax[i].plot(fit.chain[:, :, i], 'k', alpha=0.3)
         # ax[i].hlines(truths[i], 0, fit.chain.shape[0], colors='r', zorder=100)
-        ax[i].hlines(fit_vals[i], 0, fit.chain.shape[0], colors='cyan', zorder=100)
+        ax[i].hlines(val_dict[fit.var_names[i]], 0, fit.chain.shape[0], colors='cyan', zorder=100)
         ax[i].set_ylabel(labels[i])
     ax[-1].set_xlabel("Step Number")
-    plt.savefig("visibility_fit_walkers_{}.png".format(vis.time.isot[0]))
+    if save:
+        plt.savefig(outdir+"visibility_fit_walkers_{}MHz_{}.png".format(int(np.round(vis.freq.value)), vis.time.isot[0]))
     if not plot:
         plt.close()
     return
 
+def recreate_map(vis, fit, pix=1024, scale=5*u.arcsec):
+    #define grid onto which to put the fitted data
+    x = np.arange(pix) * scale
+    y = np.arange(pix) * scale
+    x = x - x[-1] / 2
+    y = y - y[-1] / 2
+    x = x + vis.phase_dir.ra
+    y = y + vis.phase_dir.dec
+    xx, yy = np.meshgrid(x, y)
+    g_centre = SkyCoord(vis.phase_dir.ra + fit.params['x0'] * u.rad,
+                        vis.phase_dir.dec + fit.params['y0'] * u.rad,
+                        distance=vis.phase_dir.distance,
+                        obstime=vis.time)
+    data = gauss_2D_real((xx.value, yy.value),
+                         fit.params['I0'],
+                         g_centre.ra.arcsec,
+                         g_centre.dec.arcsec,
+                         Angle(fit.params['sig_x']*u.rad).arcsec,
+                         Angle(fit.params['sig_y']*u.rad).arcsec,
+                         fit.params['theta'], 0)
+    data = data.reshape(pix, pix)
+    # reference_coord_arcsec = vis.phase_dir.transform_to(frames.Helioprojective(observer=vis.lofar_gcrs))
+    map_header = sunpy.map.make_fitswcs_header(data,
+                                               vis.phase_dir,
+                                               reference_pixel=u.Quantity([pix/2, pix/2]*u.pixel),
+                                               scale=u.Quantity([scale.to(u.deg), scale.to(u.deg)]*u.deg/u.pix),
+                                               wavelength=vis.freq,
+                                               observatory='LOFAR')
+    rec_map = sunpy.map.Map(data, map_header)
+    rec_map_helio = icrs_map_to_helio(rec_map)
+    return rec_map(helio)
 
 def main(msin, trange, plot=False):
     """
@@ -361,8 +461,12 @@ def main(msin, trange, plot=False):
     # diff_vis = (vis.data - q_sun_mean)
     # gauss0 = diff_vis[:,0] + diff_vis[:,3]
     # gauss0 = vis.model[:,0] + vis.model[:,3]
+    # gauss0 = vis.uncal[:,0] + vis.uncal[:,3]
+
+
     gauss0 = vis.stokes('I')
     weights = vis.weight[:,0] + vis.weight[:,3]# + q_sun_weight[:,0] + q_sun_weight[:, 3]
+
     # Adding random noise, normalising the data to see if there's a difference
     # gauss0 = gauss0 + (np.mean(gauss0) * np.random.randn(len(weights)))
     # gauss0 = gauss0/np.max(gauss0)
@@ -376,27 +480,27 @@ def main(msin, trange, plot=False):
 
     # Make guess for starting values
     init_params = {"I0": np.max(np.abs(gauss0)),
-                   "x0": Angle(500 * u.arcsec).rad,
-                   "y0": Angle(750 * u.arcsec).rad,
+                   "x0": Angle(-1800 * u.arcsec).rad, #-0.00769764,#
+                   "y0": Angle(60 * u.arcsec).rad, #0.00412132,#
                    "sig_x": Angle(5 * u.arcmin).rad / (2 * np.sqrt(2 * np.log(2))),
                    "sig_y": Angle(7 * u.arcmin).rad / (2 * np.sqrt(2 * np.log(2))),
-                   "theta": 0,
-                   "C": 0}
+                   "theta": np.pi/12}
+                   # "C": 0}
 
     params = Parameters()
-    params.add_many(("I0", init_params["I0"], True, 0.25 * init_params["I0"], 2 * init_params["I0"]),
+    params.add_many(("I0", init_params["I0"], True, 0 * init_params["I0"], 2 * init_params["I0"]),
                     ("x0", init_params["x0"], False, - 2 * R_av_ang_asec.rad, 2 * R_av_ang_asec.rad),
                     ("y0", init_params["y0"], False, - 2 * R_av_ang_asec.rad, 2 * R_av_ang_asec.rad),
                     ("sig_x", init_params["sig_x"], True, Angle(5*u.arcmin).rad/(2 * np.sqrt(2 * np.log(2))),
-                     Angle(20*u.arcmin).rad/(2 * np.sqrt(2 * np.log(2)))),
+                     Angle(30*u.arcmin).rad/(2 * np.sqrt(2 * np.log(2)))),
                     ("sig_y", init_params["sig_y"], True, Angle(5*u.arcmin).rad/(2 * np.sqrt(2 * np.log(2))),
-                     Angle(20*u.arcmin).rad/(2 * np.sqrt(2 * np.log(2)))),
-                    ("theta", init_params["theta"], True, -np.pi / 8, np.pi / 8),
-                    ("C", init_params["C"], False, 0, 0.5 * np.max(np.abs(gauss0))))
+                     Angle(30*u.arcmin).rad/(2 * np.sqrt(2 * np.log(2)))),
+                    ("theta", init_params["theta"],True, 0, np.pi/2))
+                    # ("C", init_params["C"], False, 0, 0.5 * np.max(np.abs(gauss0))))
 
     # Experimenting with different errors/weights
-    # error = np.abs(gauss0 * np.sqrt((vis.weight[:, 0]/vis.data[:,0]) ** 2 +
-    #                                 (vis.weight[:, 3]/vis.data[:,3]) ** 2))# +
+    error = np.abs(gauss0 * np.sqrt((vis.weight[:, 0]/vis.data[:,0]) ** 2 +
+                                    (vis.weight[:, 3]/vis.data[:,3]) ** 2))# +
                                     # (q_sun_weight[:,0]/q_sun_mean[:,0]) ** 2 +
                                     # (q_sun_weight[:, 3]/q_sun_mean[:, 3]) ** 2))
 
@@ -404,26 +508,30 @@ def main(msin, trange, plot=False):
                                     # (q_sun.weight[:, 0]/q_sun.data[:,0]) ** 2 +
                                     # (q_sun.weight[:, 3]/q_sun.data[:,3]) ** 2)
 
-    # error = 1/error
-    error = weights
+    error = 1/error
+    uv_dist = np.sqrt(vis.uvw[:630, 0] ** 2 + vis.uvw[:630, 1] ** 2)
+    ang_scales = Angle((1 / uv_dist) * u.rad)
+    error = weights * np.std(gauss0)
+    # error = ang_scales.rad
     # error = briggs(weights, -1)
     # Fit amplitude Levenberg–Marquardt algorithm
     # Only vary I0, sig_x, sig_y and theta
+
     fit_amp = minimize(residual, params,
-                       args=(vis.uvw[:, 0], vis.uvw[:, 1], gauss0, error, "amplitude"))
+                       args=(vis.uvw[:, 0], vis.uvw[:, 1], gauss0, weights, "amplitude"))
     fit_amp.params['I0'].vary = False
     fit_amp.params['x0'].vary = True
     fit_amp.params['y0'].vary = True
     fit_amp.params['sig_x'].vary = False
     fit_amp.params['sig_y'].vary = False
     fit_amp.params['theta'].vary = False
-    fit_amp.params['C'].vary = False
+    # fit_amp.params['C'].vary = False
 
     # uvw[:276] = core baselines
     # Fit phase Levenberg–Marquardt algorithm
     # Only vary x0 and y0
     fit_phase = minimize(residual, fit_amp.params,
-                         args=(vis.uvw[:, 0], vis.uvw[:, 1], gauss0, error, "phase"))
+                         args=(vis.uvw[:275, 0], vis.uvw[:275, 1], gauss0[:275], None, "phase"))
     # assume first guess is correct and update min, max parameter values
     # don't do this because the first guess is rarely correct
     # fit_phase.params['x0'].min = fit_phase.params['x0'] - (R_av_ang_asec.rad / 2)
@@ -441,31 +549,35 @@ def main(msin, trange, plot=False):
     fit_phase.params['sig_x'].vary = True
     fit_phase.params['sig_y'].vary = True
     fit_phase.params['theta'].vary = True
-    fit_phase.params['C'].vary = False
-    # fit_phase.params.add('__lnsigma', value=np.log(0.1))#, min=np.log(0.001), max=np.log(2))
+    # fit_phase.params['C'].vary = False
+    fit_phase.params.add('__lnsigma', value=np.log(np.std(gauss0)))#, min=np.log(0.001), max=np.log(2))
     # Fit everything MCMC
     # Make a ball around parameters determined above
-    nwalkers = 350
+    nwalkers = 200
     walker_init_pos = np.array((fit_phase.params['I0'].value,
                                 fit_phase.params['x0'].value,
                                 fit_phase.params['y0'].value,
                                 fit_phase.params['sig_x'].value,
                                 fit_phase.params['sig_y'].value,
-                                fit_phase.params['theta'].value
+                                fit_phase.params['theta'].value,
                                 # fit_phase.params['C'].value
-                                # fit_phase.params['__lnsigma'].value
-                                )) * (1 + (1e-4 * np.random.randn(nwalkers, len(init_params) - 1)))
+                                fit_phase.params['__lnsigma'].value
+                                )) * (1 + (1e-4 * np.random.randn(nwalkers, len(fit_phase.params))))
 
     print("Fitting for {}".format(vis.time.isot))
     # pdb.set_trace()
+    good_weights = weights[np.argwhere((1/weights) < (3 * np.std(1/weights) + np.mean(1/weights)))]
+    good_gauss0 = gauss0[np.argwhere((1/weights) < (3 * np.std(1/weights) + np.mean(1/weights)))]
     fit = minimize(residual, fit_phase.params, method='emcee', pos=walker_init_pos,
-                   steps=2000, burn=450, nwalkers=nwalkers, progress=True, is_weighted=True,
-                   args=(vis.uvw[:, 0], vis.uvw[:, 1], gauss0, error, "all"))
+                   steps=2000, burn=500, nwalkers=nwalkers, progress=True, is_weighted=False,
+                   args=(vis.uvw[np.argwhere((1/weights) < (3 * np.std(1/weights) + np.mean(1/weights))), 0],
+                         vis.uvw[np.argwhere((1/weights) < (3 * np.std(1/weights) + np.mean(1/weights))), 1], good_gauss0, None, "all"))
 
-    plot_fit(vis, gauss0, fit, plot)
+    outdir = "vis_fits/30MHz/"+vis.time.isot[0][:10].replace('-','_')+"/good_times/tweaked_weights_theta_"
+    plot_fit(vis, gauss0, fit, plot, save=False, outdir=outdir)
 
     print("Time to run {}".format(time.time() - t0))
-    return fit, vis.time.isot[0]#, fit_amp, fit_phase
+    return fit, vis.time.isot[0], vis.phase_dir#, fit_amp, fit_phase
 
 
 if __name__ == "__main__":
@@ -489,7 +601,9 @@ if __name__ == "__main__":
             tstart = Time(trange[0])
             trange = TimeRange(tstart, tstart + 0.16 * u.s)
 
-        fit, burst_time = main(msin, trange, plot=True)
+        # fit, burst_time, phase_dir = main(msin, trange, plot=True)
+        # g_centre = SkyCoord(phase_dir.ra + fit.params['x0'] * u.rad, phase_dir.dec + fit.params['y0'] * u.rad,
+        #                     distance=phase_dir.distance, obstime=burst_time)
         report_fit(fit)
         print("Aspect Ratio: {}".format(fit.params['sig_x'].value / fit.params['sig_y'].value))
         plt.show()
@@ -501,15 +615,17 @@ if __name__ == "__main__":
             trange = TimeRange(tstart, tstart + 0.16 * u.s)
             trange_list.append(trange)
         with Pool() as pool:
-            fit_burst_time = np.array(pool.starmap(main, product([msin], trange_list)))
+            fit_burst_time_dir = np.array(pool.starmap(main, product([msin], trange_list)))
         print("fitting and plotting finished")
-        fit_burst_time = fit_burst_time.T
-        fit, burst_time = fit_burst_time
+        fit_burst_time_dir = fit_burst_time_dir.T
+        fit, burst_time, phase_dir = fit_burst_time_dir
         fit_df = pd.DataFrame([f.params.valuesdict() for f in fit], index=burst_time)
+        fit_df['redchi'] = [f.redchi for f in fit]
+        fit_df['burst_centre'] = phase_dir
         std_dict = {key + '_stderr': None for key in fit[0].params.keys()}
         for key in fit[0].params.keys():
             std_dict[key + '_stderr'] = [f.params[key].stderr for f in fit]
         fit_std_df = pd.DataFrame(std_dict, index=burst_time)
         fit_df = pd.concat([fit_df, fit_std_df], axis='columns')
-        pickle_path = "burst_properties_visibility_fit_{}.pkl".format(trange.start.isot[:10])
-        fit_df.to_pickle(pickle_path)
+        pickle_path = "burst_properties_30MHz_good_times_tweaked_weights_theta_visibility_fit_{}.pkl".format(trange.start.isot[:10])
+        # fit_df.to_pickle(pickle_path)

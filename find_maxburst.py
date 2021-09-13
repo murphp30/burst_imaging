@@ -53,7 +53,7 @@ tarr = bf.obs_start+np.arange(t0,t1+1)*bf.dt
 new_dt = 0.167772  # 0.167772 seconds is interferometric temporal resolution
 new_dt_index = int(np.round(new_dt / bf.dt.sec))
 sig = new_dt_index / (2 * np.sqrt(2 * np.log(2)))  # FWHM is interferometric time res.
-freqs = [51.3671875]  # np.arange(20,80,10)
+freqs = [30.4687500]#[51.3671875]  # np.arange(20,80,10)
 if plot:
     fig, ax = plt.subplots(figsize=(10, 8))
     bf.plot(ax=ax, bg_subtract=True, clip_interval=clip)
@@ -111,18 +111,18 @@ for freq in freqs:
 # ax.xaxis.set_major_formatter(date_format)
 # plt.hlines(np.mean(dslice) + 5 * bg_std, 0, len(smooth), color='k', zorder=1000)
 save_path = "./"  # "/mnt/murphp30_data/paper2"
-save_png = save_path + "/peak_times_{}_{}.png".format(trange.start.isot[:-4].replace(':', ''),
+save_png = save_path + "/peak_times_30MHz_{}_{}.png".format(trange.start.isot[:-4].replace(':', ''),
                                                       trange.end.isot[11:-4].replace(':', ''))
-# if plot:
-#     plt.savefig(save_png)
-# peaks_df = pd.concat(peaks_df, axis=1)
-# max_peaks_df = pd.concat(max_peaks_df, axis=1)
-# save_pickle = save_path + "/peak_times_{}_{}.pkl".format(trange.start.isot[:-4].replace(':', ''),
-#                                                             trange.end.isot[11:-4].replace(':', ''))
+if plot:
+    plt.savefig(save_png)
+peaks_df = pd.concat(peaks_df, axis=1)
+max_peaks_df = pd.concat(max_peaks_df, axis=1)
+save_pickle = save_path + "/peak_times_30MHz_{}_{}.pkl".format(trange.start.isot[:-4].replace(':', ''),
+                                                            trange.end.isot[11:-4].replace(':', ''))
 # with open("peak_times.txt", 'a') as peak_file:
 #     peak_file.write(max_peak_time.isot)
 #     peak_file.write('\n')
-# peaks_df.to_pickle(save_pickle)
+peaks_df.to_pickle(save_pickle)
 # max_peaks_df.to_pickle(save_pickle)
 # plt.close()
 plt.show()

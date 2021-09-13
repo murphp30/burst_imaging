@@ -5,6 +5,7 @@ Fit a gauss to a single burst in image space
 Pearse Murphy 30/03/20 COVID-19
 Takes fits file created by WSClean as input
 """
+
 import argparse
 import os
 import warnings
@@ -335,11 +336,12 @@ if __name__ == '__main__':
 
     gmodel = Model(gauss_2d)
     params = make_params(helio_map, 10, 10, 0, 0.1)
-    error = np.ones_like(np.ravel(helio_map.data)) * 0.01 * np.max(helio_map.data)
+    error = np.ones_like(np.ravel(helio_map.data)) * np.std(resid_map.data)#* 0.01 * np.max(helio_map.data)
     # error = np.ravel(resid_map.data)
     print("Beginning fit for " + infits)
     gfit = gmodel.fit(np.ravel(helio_map.data), params, xy=xy_arcsec, weights= 1/error)
-    plot_nice(helio_map, gfit)
+    plot_nice(helio_map, gfit, save=True)
+    # plt.close()
     # helio_resample = helio_map.resample([199, 199]*u.pix)
     # xy_mesh_resample = sunpy.map.all_coordinates_from_map(helio_resample)
     # xy_arcsec_resample = [xy_mesh_resample.Tx.arcsec, xy_mesh_resample.Ty.arcsec]
@@ -360,7 +362,7 @@ if __name__ == '__main__':
     df_dict['redchi'] = gfit.redchi
     df = pd.DataFrame(df_dict.values(), df_dict.keys(), columns=[helio_map.date.isot])
 
-    pickle_path = "burst_properties_modelfit{}.pkl".format(helio_map.date.isot[:10])
+    pickle_path = "burst_properties_{}MHz_{}.pkl".format(int(np.round(helio_map.wavelength.value)), helio_map.date.isot[:10])
 
     if os.path.isfile(pickle_path):
         df0 = pd.read_pickle(pickle_path)

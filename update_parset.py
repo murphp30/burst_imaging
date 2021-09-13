@@ -75,6 +75,7 @@ with open('cal_aoflag.parset', 'w') as f:
             \nmsin.nchan = nchan*14/16 \
             \nsteps=[flag, avg] \
             \nflag.type=aoflagger \
+            \nflag.strategy=/opt/lofarsoft/share/rfistrategies/LOFAR-LBA-default.rfis \
             \navg.type=average \
             \n#avg.timestep=5 \
             \navg.freqstep=16\n'.format(cal_ms, cal_aw, starttime, endtime))
@@ -120,7 +121,7 @@ with open('sun_cal.parset', 'w') as f:
             \nmsin.endtime={} \
             \nsteps=[gaincal] \
             \ngaincal.usebeammodel=True \
-            \ngaincal.solint=4 \
+            \ngaincal.solint=6 \
             \n#gaincal.timeslotsperparmupdate=100 \
             \ngaincal.sources=TauA \
             \ngaincal.sourcedb=TauA.sourcedb \

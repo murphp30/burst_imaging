@@ -8,14 +8,14 @@ import numpy as np
 import pandas as pd
 
 from astropy.constants import eps0, e, m_e, R_sun
-from astropy.coordinates import Angle
+from astropy.coordinates import Angle, SkyCoord
 from astropy.time import Time
 from matplotlib import dates
 from matplotlib.collections import PatchCollection
 from matplotlib.colors import LogNorm
 from matplotlib.patches import Circle, Ellipse
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-from scipy.optimize import curve_fit, minimize_scalar
+from scipy.optimize import minimize_scalar
 from sunpy.sun.constants import average_angular_size as R_sun_ang
 
 def ellipses(x, y, w, h=None, rot=0.0, c='b', vmin=None, vmax=None, **kwargs):
@@ -125,30 +125,29 @@ def density_3_pl(r):
     n = (4.8e9*((R_sun/r)**14)) +( 3e8*((R_sun/r)**6) )+ (1.4e6*((R_sun/r)**2.3))
     n = n*u.cm**(-3)
     return n.to(u.m**(-3))
+
 def find_burst_r(r):
     freq = 30.46875*u.MHz
     n_p = density_from_plasma_freq(freq)
     return abs(n_p.value - density_3_pl(r * u.m).value)
 
-def fit_line(x, m, c):
-    return m*x + c
-
 R_burst = minimize_scalar(find_burst_r)
 R_burst = R_burst.x * u.m
 R_sun_ang = Angle(R_sun_ang)
-if not os.path.isfile('all_bursts_30MHz.pkl'):
-    pickle_list = glob.glob('burst_properties_30MHz_2019*pkl')
+
+if not os.path.isfile('all_bursts_30MHz_good_times_tweaked_weights_theta_visfit.pkl'):
+    pickle_list = glob.glob('burst_properties_30MHz_good_times_tweaked_weights_theta_visibility_fit_2019*.pkl')
     pickle_list.sort()
     df_list = []
     for pkl in pickle_list:
         df = pd.read_pickle(pkl)
         df = df.sort_index(axis=1)
         df_list.append(df)
-    df = pd.concat(df_list, axis='columns')
-    df.to_pickle('all_bursts_30MHz.pkl')
+    df = pd.concat(df_list)
+    df.to_pickle('all_bursts_30MHz_good_times_tweaked_weights_theta_visfit.pkl')
 else:
-    df = pd.read_pickle('all_bursts_30MHz.pkl')
-# df = pd.read_pickle('uncal_all_bursts_30MHz.pkl')
+    df = pd.read_pickle('all_bursts_30MHz_good_times_tweaked_weights_theta_visfit.pkl')
+# df = pd.read_pickle('uncal_all_bursts_30MHz_visfit.pkl')
 # if not os.path.isfile('avg_bursts.pkl'):
 #     pickle_list = glob.glob('burst_properties2019*pkl')
 #     pickle_list.sort()
@@ -163,28 +162,33 @@ else:
 # else:
 #     mean_df = pd.read_pickle('avg_bursts.pkl')
 #     mean_df = mean_df.T
-df = df.T
-bad_sig = 600/(2 * np.sqrt(2 * np.log(2))) #10arcmins
-# df = df.where(df['amp'] > 2000)
-df = df.where(df['sig_x'] != bad_sig)
-df = df.dropna()
-times = Time(list(df.index), format='isot')
-xs = df['x0']
-xs_m = (R_sun/R_sun_ang) * xs
-ys = df['y0']
+# df = df.T
+bad_sig = Angle(15*u.arcmin).rad/(2 * np.sqrt(2 * np.log(2))) #20arcmins
+
+# df = df.drorp(columns=['theta', 'theta_stderr'])
+# df = df.where(df['sig_x'] > bad_sig)
+# df = df.where(df['I0'] > 5e5)
+# df = df.where(np.abs(df['redchi'] - 1) < 0.0005)
+# df = df.dropna()
+
+best_times_file = "best_times.txt"
+best_times = np.loadtxt(best_times_file, dtype=str)
+df = df.loc[df.index.intersection(best_times)]
+# times = Time(list(df.index), format='isot')
+xs = Angle(df['x0']*u.rad).arcsec
+xs_m = (R_sun/R_sun_ang) * (xs*u.arcsec)
+ys = Angle(df['y0']*u.rad).arcsec
 dx, dy, dfwhm_x, dfwhm_y = errors(df)
-sig_x, sig_y = df['sig_x'].values, df['sig_y'].values
+sig_x, sig_y = Angle(df['sig_x'].values*u.rad).arcsec, Angle(df['sig_y'].values*u.rad).arcsec
 fwhm_x, fwhm_y = Angle(2 * np.sqrt(2 * np.log(2)) * sig_x * u.arcsec), Angle(
     2 * np.sqrt(2 * np.log(2)) * sig_y * u.arcsec)
-sig_max = np.fmax(df['sig_x'].values, df['sig_y'].values)
-sig_min = np.fmin(df['sig_x'].values, df['sig_y'].values)
+sig_max = np.fmax(sig_x, sig_y)#(df['sig_x'].values, df['sig_y'].values)
+sig_min = np.fmin(sig_x, sig_y)#(df['sig_x'].values, df['sig_y'].values)
 
 fwhm_max = Angle(2 * np.sqrt(2 * np.log(2)) * sig_max * u.arcsec)
 fwhm_min = Angle(2 * np.sqrt(2 * np.log(2)) * sig_min * u.arcsec)
-fwhm_ratio = fwhm_x / fwhm_y
+fwhm_ratio = fwhm_min / fwhm_max
 dfwhm_ratio = fwhm_ratio * np.sqrt((dfwhm_x / fwhm_x) ** 2 + (dfwhm_y / fwhm_y) ** 2)
-
-best_fit, _ = curve_fit(fit_line, np.abs(xs_m/R_burst), fwhm_ratio, sigma=dfwhm_ratio)
 # fig, ax = plt.subplots()
 # ax.plot(times.plot_date, fwhm_max/R_sun_ang, 'o')
 # ax.xaxis_date()
@@ -200,19 +204,19 @@ date_format = dates.DateFormatter("%Y-%m-%d")
 # plt.xlabel('Time (UTC)')
 # plt.ylabel(r'Minor axis (R$_{\odot})$')
 
-# fig, ax = plt.subplots(figsize=(8, 7))
-# ax.errorbar(times.plot_date, fwhm_ratio , dfwhm_ratio, marker='o', ls='')
-# ax.xaxis_date()
-# date_format = dates.DateFormatter("%m-%d")
-# ax.xaxis.set_major_formatter(date_format)
-# plt.xlabel('Date')
-# plt.ylabel('FWHM ratio')
-# plt.savefig('fwhm_ratio_date_modelfit.png')
+#fig, ax = plt.subplots(figsize=(8, 7))
+#ax.plot(fwhm_ratio, 'o')
+## ax.xaxis_date()
+#date_format = dates.DateFormatter("%m-%d")
+## ax.xaxis.set_major_formatter(date_format)
+#plt.xlabel('Date')
+#plt.ylabel(r'FWHMx (R$_{\odot})$')
+## plt.savefig('fwhmx_date_modelfit.png')
 
 # fig, ax = plt.subplots(figsize=(8, 7))
-# ax.errorbar(times.plot_date, fwhm_y / R_sun_ang, dfwhm_y / R_sun_ang, marker='o', ls='')
-# ax.xaxis_date()
-# ax.xaxis.set_major_formatter(date_format)
+# ax.plot(fwhm_y / R_sun_ang, marker='o')
+# # ax.xaxis_date()
+# # ax.xaxis.set_major_formatter(date_format)
 # plt.xlabel('Date')
 # plt.ylabel(r'FWHMy (R$_{\odot})$')
 # plt.savefig('fwhmy_date_modelfit.png')
@@ -267,8 +271,8 @@ date_format = dates.DateFormatter("%Y-%m-%d")
 # ax.set_xlim(-2000, 2000)
 # ax.set_ylim(-2000, 2000)
 # ax.set_aspect('equal')
-# plt.savefig('x_y_fwhmx_bad.png')
-# #
+# # plt.savefig('x_y_fwhmx_bad.png')
+#
 # fig, ax = plt.subplots(figsize=(11, 10))
 # # ax.errorbar(xs, ys, dy, dx, ls='')
 # sc = ax.scatter(xs, ys, c=fwhm_y / R_sun_ang, s=fwhm_y.arcsec)
@@ -302,30 +306,32 @@ date_format = dates.DateFormatter("%Y-%m-%d")
 # plt.ylabel(r'FWHMx (R$_{\odot})$')
 # plt.savefig('fwhmx_x_bad.png')
 #
-# fig, ax = plt.subplots(figsize=(8, 7))
-# ax.errorbar(xs, fwhm_y / R_sun_ang, dfwhm_y / R_sun_ang, marker='o', ls='')
-# plt.xlabel('x arcsec')
-# plt.ylabel(r'FWHMy (R$_{\odot})$')
-# plt.savefig('fwhmy_x_bad.png')
-# plt.show()
 fig, ax = plt.subplots(figsize=(8, 7))
-ax.errorbar(xs, fwhm_ratio, dfwhm_ratio, marker='o', ls='')
+ax.errorbar(xs, fwhm_ratio, dfwhm_ratio, dx, marker='o', ls='')
 plt.xlabel('x arcsec')
 plt.ylabel('FWHM ratio')
-plt.savefig('fwhm_ratio_x.png')
+
+fig, ax = plt.subplots(figsize=(8, 7))
+ax.errorbar(np.abs(xs_m/R_burst),fwhm_max.arcsec, dfwhm_y.arcsec, marker='o', ls='')
+# plt.xlim((0,1))
+plt.xlabel(r'$\sin{\theta_s}$')
+plt.ylabel('FWHM max')
+
+fig, ax = plt.subplots(figsize=(8, 7))
+ax.errorbar(np.abs(xs_m/R_burst), fwhm_min.arcsec, dfwhm_x.arcsec, marker='o', ls='')
+# plt.xlim((0,1))
+plt.xlabel(r'$\sin{\theta_s}$')
+plt.ylabel('FWHM min')
 
 fig, ax = plt.subplots(figsize=(8, 7))
 ax.errorbar(np.abs(xs_m/R_burst), fwhm_ratio, dfwhm_ratio, marker='o', ls='')
-ax.plot(np.abs(xs_m/R_burst), fit_line(np.abs(xs_m/R_burst),*best_fit), 'r', zorder=100)
-plt.xlim((0,1))
+# plt.xlim((0,1))
 plt.xlabel(r'$\sin{\theta_s}$')
 plt.ylabel('FWHM ratio')
-plt.savefig('fwhm_ratio_sintheta.png')
 
-# plt.savefig('fwhmy_x_bad.png')
 fig, ax = plt.subplots(figsize=(11, 10))
 # ax.errorbar(xs, ys, dy, dx, ls='')
-sc = ellipses(df.x0, df.y0, fwhm_x, fwhm_y, df.theta, c=fwhm_ratio, alpha=0.5)
+sc = ellipses(xs, ys, fwhm_y, fwhm_x,Angle(df['theta']*u.rad).deg, c=fwhm_ratio, alpha=0.5, vmin=0, vmax=2)
 sun_circle = Circle((0, 0), radius=R_sun_ang.arcsec, color='r', fill=False)
 plt.xlabel('X position (arcsec)')
 plt.ylabel('Y position (arcsec)')
@@ -333,8 +339,8 @@ plt.ylabel('Y position (arcsec)')
 # cax = divider.append_axes("right", size="5%", pad=0.05)
 plt.colorbar(sc, ax=ax)
 ax.add_patch(sun_circle)
-sc.colorbar.set_label('FWHM ratio')
+sc.colorbar.set_label('Aspect ratio')
 ax.set_xlim(-2000, 2000)
 ax.set_ylim(-2000, 2000)
 ax.set_aspect('equal')
-plt.savefig('burst_ellipses_modelfits.png')
+# # plt.savefig('burst_ellipses_modelfits.png')
