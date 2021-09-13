@@ -211,10 +211,10 @@ class LOFAR_vis:
             phase_dir = tfield.col('PHASE_DIR')[0][0]
             core_ITRF = np.array((3826577.462, 461022.624, 5064892.526))
             lofar_loc = EarthLocation.from_geocentric(*core_ITRF, u.m)
-            self.lofar_gcrs = SkyCoord(lofar_loc.get_gcrs(self.time))
+            self.lofar_gcrs = SkyCoord(lofar_loc.get_gcrs(Time(self.time.isot[0])))
             self.phase_dir = SkyCoord(*phase_dir * u.rad,
                                       frame='gcrs',
-                                      obstime=self.time.isot,
+                                      obstime=self.time.isot[0],
                                       obsgeoloc=self.lofar_gcrs.cartesian,
                                       obsgeovel=self.lofar_gcrs.velocity.to_cartesian(),
                                       distance=self.lofar_gcrs.hcrs.distance,
@@ -424,25 +424,37 @@ def recreate_map(vis, fit, pix=1024, scale=5*u.arcsec):
     g_centre = SkyCoord(vis.phase_dir.ra + fit.params['x0'] * u.rad,
                         vis.phase_dir.dec + fit.params['y0'] * u.rad,
                         distance=vis.phase_dir.distance,
-                        obstime=vis.time)
+                        obstime=Time(vis.time.isot[0]))
+    burst_centre_coord = SkyCoord(vis.phase_dir.ra + fit.params['x0'] * u.rad, vis.phase_dir.dec + fit.params['y0'] * u.rad,
+                              frame='gcrs',
+                              obstime=vis.time.isot[0],
+                              obsgeoloc=vis.lofar_gcrs.cartesian,
+                              obsgeovel=vis.lofar_gcrs.velocity.to_cartesian(),
+                              distance=vis.lofar_gcrs.hcrs.distance,
+                              equinox='J2000')
     data = gauss_2D_real((xx.value, yy.value),
                          fit.params['I0'],
-                         g_centre.ra.arcsec,
-                         g_centre.dec.arcsec,
+                         burst_centre_coord.ra.arcsec,
+                         burst_centre_coord.dec.arcsec,
                          Angle(fit.params['sig_x']*u.rad).arcsec,
                          Angle(fit.params['sig_y']*u.rad).arcsec,
                          fit.params['theta'], 0)
     data = data.reshape(pix, pix)
-    # reference_coord_arcsec = vis.phase_dir.transform_to(frames.Helioprojective(observer=vis.lofar_gcrs))
+
+    reference_coord = vis.phase_dir
+    reference_coord_arcsec = reference_coord.transform_to(frames.Helioprojective(observer=vis.lofar_gcrs))
     map_header = sunpy.map.make_fitswcs_header(data,
-                                               vis.phase_dir,
+                                               reference_coord_arcsec,
                                                reference_pixel=u.Quantity([pix/2, pix/2]*u.pixel),
-                                               scale=u.Quantity([scale.to(u.deg), scale.to(u.deg)]*u.deg/u.pix),
+                                               scale=u.Quantity([scale, scale]*u.arcsec/u.pix),
+                                               rotation_angle=-sun.P(vis.time.isot),
                                                wavelength=vis.freq,
                                                observatory='LOFAR')
     rec_map = sunpy.map.Map(data, map_header)
-    rec_map_helio = icrs_map_to_helio(rec_map)
-    return rec_map(helio)
+
+
+    burst_centre_coord_asec =burst_centre_coord.transform_to(frames.Helioprojective(observer=vis.lofar_gcrs))
+    return rec_map
 
 def main(msin, trange, plot=False):
     """
@@ -477,9 +489,10 @@ def main(msin, trange, plot=False):
     y0 = Angle(750 * u.arcsec)
     rot_ang = Angle(10 * u.deg).rad
     R_av_ang_asec = Angle(R_av_ang.value * u.arcsec)
-
+    good_weights = weights[np.argwhere((1/weights) < (3 * np.std(1/weights) + np.mean(1/weights)))]
+    good_gauss0 = gauss0[np.argwhere((1/weights) < (3 * np.std(1/weights) + np.mean(1/weights)))]
     # Make guess for starting values
-    init_params = {"I0": np.max(np.abs(gauss0)),
+    init_params = {"I0": np.max(np.abs(good_gauss0)),
                    "x0": Angle(-1800 * u.arcsec).rad, #-0.00769764,#
                    "y0": Angle(60 * u.arcsec).rad, #0.00412132,#
                    "sig_x": Angle(5 * u.arcmin).rad / (2 * np.sqrt(2 * np.log(2))),
@@ -492,10 +505,12 @@ def main(msin, trange, plot=False):
                     ("x0", init_params["x0"], False, - 2 * R_av_ang_asec.rad, 2 * R_av_ang_asec.rad),
                     ("y0", init_params["y0"], False, - 2 * R_av_ang_asec.rad, 2 * R_av_ang_asec.rad),
                     ("sig_x", init_params["sig_x"], True, Angle(5*u.arcmin).rad/(2 * np.sqrt(2 * np.log(2))),
-                     Angle(30*u.arcmin).rad/(2 * np.sqrt(2 * np.log(2)))),
-                    ("sig_y", init_params["sig_y"], True, Angle(5*u.arcmin).rad/(2 * np.sqrt(2 * np.log(2))),
-                     Angle(30*u.arcmin).rad/(2 * np.sqrt(2 * np.log(2)))),
-                    ("theta", init_params["theta"],True, 0, np.pi/2))
+                     Angle(30*u.arcmin).rad/(2 * np.sqrt(2 * np.log(2)))))
+    params.add("delta", init_params["sig_y"], min=0,
+                     max=Angle(30*u.arcmin).rad/(2 * np.sqrt(2 * np.log(2))))
+    params.add("sig_y", init_params["sig_y"], min=Angle(5*u.arcmin).rad/(2 * np.sqrt(2 * np.log(2))),
+                     max=Angle(30*u.arcmin).rad/(2 * np.sqrt(2 * np.log(2))), expr="delta + sig_x")
+    params.add("theta", init_params["theta"],True, -np.pi, np.pi)
                     # ("C", init_params["C"], False, 0, 0.5 * np.max(np.abs(gauss0))))
 
     # Experimenting with different errors/weights
@@ -523,6 +538,7 @@ def main(msin, trange, plot=False):
     fit_amp.params['x0'].vary = True
     fit_amp.params['y0'].vary = True
     fit_amp.params['sig_x'].vary = False
+    fit_amp.params['delta'].vary = False
     fit_amp.params['sig_y'].vary = False
     fit_amp.params['theta'].vary = False
     # fit_amp.params['C'].vary = False
@@ -547,27 +563,29 @@ def main(msin, trange, plot=False):
     fit_phase.params['x0'].vary = True
     fit_phase.params['y0'].vary = True
     fit_phase.params['sig_x'].vary = True
+    fit_phase.params['delta'].vary= True
     fit_phase.params['sig_y'].vary = True
     fit_phase.params['theta'].vary = True
     # fit_phase.params['C'].vary = False
     fit_phase.params.add('__lnsigma', value=np.log(np.std(gauss0)))#, min=np.log(0.001), max=np.log(2))
     # Fit everything MCMC
     # Make a ball around parameters determined above
+    # pdb.set_trace()
     nwalkers = 200
     walker_init_pos = np.array((fit_phase.params['I0'].value,
                                 fit_phase.params['x0'].value,
                                 fit_phase.params['y0'].value,
                                 fit_phase.params['sig_x'].value,
-                                fit_phase.params['sig_y'].value,
+                                fit_phase.params['delta'].value,
+                                # fit_phase.params['sig_y'].value,
                                 fit_phase.params['theta'].value,
                                 # fit_phase.params['C'].value
                                 fit_phase.params['__lnsigma'].value
-                                )) * (1 + (1e-4 * np.random.randn(nwalkers, len(fit_phase.params))))
+                                )) * (1 + (1e-4 * np.random.randn(nwalkers, len(fit_phase.params)-1)))
 
     print("Fitting for {}".format(vis.time.isot))
     # pdb.set_trace()
-    good_weights = weights[np.argwhere((1/weights) < (3 * np.std(1/weights) + np.mean(1/weights)))]
-    good_gauss0 = gauss0[np.argwhere((1/weights) < (3 * np.std(1/weights) + np.mean(1/weights)))]
+
     fit = minimize(residual, fit_phase.params, method='emcee', pos=walker_init_pos,
                    steps=2000, burn=500, nwalkers=nwalkers, progress=True, is_weighted=False,
                    args=(vis.uvw[np.argwhere((1/weights) < (3 * np.std(1/weights) + np.mean(1/weights))), 0],
@@ -602,6 +620,8 @@ if __name__ == "__main__":
             trange = TimeRange(tstart, tstart + 0.16 * u.s)
 
         # fit, burst_time, phase_dir = main(msin, trange, plot=True)
+        vis = LOFAR_vis(msin, trange)
+        # rec_map = recreate_map(vis, fit)
         # g_centre = SkyCoord(phase_dir.ra + fit.params['x0'] * u.rad, phase_dir.dec + fit.params['y0'] * u.rad,
         #                     distance=phase_dir.distance, obstime=burst_time)
         report_fit(fit)
@@ -621,11 +641,11 @@ if __name__ == "__main__":
         fit, burst_time, phase_dir = fit_burst_time_dir
         fit_df = pd.DataFrame([f.params.valuesdict() for f in fit], index=burst_time)
         fit_df['redchi'] = [f.redchi for f in fit]
-        fit_df['burst_centre'] = phase_dir
+        fit_df['phase_dir'] = phase_dir
         std_dict = {key + '_stderr': None for key in fit[0].params.keys()}
         for key in fit[0].params.keys():
             std_dict[key + '_stderr'] = [f.params[key].stderr for f in fit]
         fit_std_df = pd.DataFrame(std_dict, index=burst_time)
         fit_df = pd.concat([fit_df, fit_std_df], axis='columns')
         pickle_path = "burst_properties_30MHz_good_times_tweaked_weights_theta_visibility_fit_{}.pkl".format(trange.start.isot[:10])
-        # fit_df.to_pickle(pickle_path)
+        fit_df.to_pickle(pickle_path)
