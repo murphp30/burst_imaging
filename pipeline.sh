@@ -14,7 +14,7 @@ echo "Pipeline run $(date +%Y-%m-%dT%H:%M:%S)" 2>&1 | tee -a "$logfile"
 #starting from raw MS dataset and BF data, find time of max radio burst, calibrate MS and make radio image.
 
 #Calibrate
-#python /mnt/LOFAR-PSP/pearse_2ndperihelion/scripts/update_parset.py "$MS" -t "$datetime_start" "$datetime_end" 2>&1 | tee -a "$logfile"
+python /mnt/LOFAR-PSP/pearse_2ndperihelion/scripts/update_parset.py "$MS" -t "$datetime_start" "$datetime_end" 2>&1 | tee -a "$logfile"
 MS_av=${MS::-3}_aw_av.MS/
 ###Find burst time
 ##cd /mnt/LOFAR-PSP/pearse_2ndperihelion/BF || exit 2>&1 | tee -a "$logfile"
@@ -23,10 +23,10 @@ MS_av=${MS::-3}_aw_av.MS/
 ##Make images and fit in image space
 #python /mnt/LOFAR-PSP/pearse_2ndperihelion/scripts/run_wsclean.py "$MS_av" -n 320 -p /mnt/LOFAR-PSP/pearse_2ndperihelion/BF/peak_times_30MHz_"${datetime_start::10}"T120000_130000.pkl -o "$dirroot"/"$datadir"/30MHz/uncal/
 #python /mnt/LOFAR-PSP/pearse_2ndperihelion/scripts/plot_fits.py all -g -a "$dirroot"/"$datadir"/30MHz/uncal/\*image.fits
-for i in $(ls "$dirroot"/"$datadir"/30MHz/*image.fits); do nohup python /mnt/LOFAR-PSP/pearse_2ndperihelion/scripts/fit_gauss_image.py $i & done
-wait
+#for i in $(ls "$dirroot"/"$datadir"/30MHz/*image.fits); do nohup python /mnt/LOFAR-PSP/pearse_2ndperihelion/scripts/fit_gauss_image.py $i & done
+#wait
 #Fit in visibility space
-python /mnt/LOFAR-PSP/pearse_2ndperihelion/scripts/plot_vis.py "$MS_av" -p /mnt/LOFAR-PSP/pearse_2ndperihelion/BF/peak_times_30MHz_"${datetime_start::10}"T120000_130000.pkl
+#python /mnt/LOFAR-PSP/pearse_2ndperihelion/scripts/plot_vis.py "$MS_av" -p /mnt/LOFAR-PSP/pearse_2ndperihelion/BF/peak_times_30MHz_"${datetime_start::10}"T120000_130000.pkl
 #MS_av=${MS::-3}_aw_av.MS
 ##Find burst time
 #cd /mnt/LOFAR-PSP/pearse_2ndperihelion/BF || exit 2>&1 | tee -a "$logfile"

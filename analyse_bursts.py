@@ -168,6 +168,9 @@ bad_sig = 600/(2 * np.sqrt(2 * np.log(2))) #10arcmins
 # df = df.where(df['amp'] > 2000)
 df = df.where(df['sig_x'] != bad_sig)
 df = df.dropna()
+# best_times_file = "best_times.txt"
+# best_times = np.loadtxt(best_times_file, dtype=str)
+# df = df.loc[df.index.intersection(best_times)]
 times = Time(list(df.index), format='isot')
 xs = df['x0']
 xs_m = (R_sun/R_sun_ang) * xs
