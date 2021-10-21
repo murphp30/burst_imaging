@@ -66,16 +66,23 @@ for freq in freqs:
     tarr = tarr[new_dt_index//2:-(len(tarr)%new_dt_index):new_dt_index]#tarr[new_dt_index//2::new_dt_index]
     smooth = dslice#gaussian_filter1d(dslice, sig)
     # define a background using rolling window of standard deviations
-    win_len = int(np.round(10 / bf.dt.sec))  # 10 second window
+    if trange.dt.sec > 60:
+        win_len = int(np.round(10 / bf.dt.sec))  # 10 second window
+    else:
+        win_len = int(np.round(1 / bf.dt.sec))  # 1 second window
     stds = np.std(rolling_window(smooth, win_len), 1)
     bg_std = stds[np.where(stds == np.min(stds))[0][0]]
     means = np.mean(rolling_window(smooth, win_len), 1)
     bg_mean = means[np.where(stds == np.min(stds))[0][0]]
 
-    peaks, _ = find_peaks(smooth,
+    if trange.dt.sec > 60:
+        peaks, _ = find_peaks(smooth,
                           height= bg_mean + 5 * bg_std,
                           distance= 10 * new_dt_index,
                           prominence= 10*bg_std)
+    else:
+        peaks, _ = find_peaks(smooth,
+                              height=bg_mean + bg_std)
     # width = new_dt_index)
     # prominence=(np.max(smooth)-np.mean(smooth))/10)
     # peaks, _ = find_peaks(dslice,
@@ -101,6 +108,7 @@ for freq in freqs:
         ax.scatter(tarr.plot_date[max_peak],
                    bf.freqs[loc].to(u.MHz).value,
                    color='r', marker='+')
+        ax.hlines([bf.freqs[loc-8].to(u.MHz).value, bf.freqs[loc+8].to(u.MHz).value], tarr.plot_date[0], tarr.plot_date[-1], color='r')
 
 # fig, ax = plt.subplots(figsize=(13, 10))
 # ax.plot(tarr.plot_date, dslice)
@@ -113,8 +121,8 @@ for freq in freqs:
 save_path = "./"  # "/mnt/murphp30_data/paper2"
 save_png = save_path + "/peak_times_30MHz_{}_{}.png".format(trange.start.isot[:-4].replace(':', ''),
                                                       trange.end.isot[11:-4].replace(':', ''))
-if plot:
-    plt.savefig(save_png)
+# if plot:
+#     plt.savefig(save_png)
 peaks_df = pd.concat(peaks_df, axis=1)
 max_peaks_df = pd.concat(max_peaks_df, axis=1)
 save_pickle = save_path + "/peak_times_30MHz_{}_{}.pkl".format(trange.start.isot[:-4].replace(':', ''),
