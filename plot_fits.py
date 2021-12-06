@@ -49,7 +49,7 @@ def plot_fits(fits_in, out_png=None):
         ax0 = fig.add_subplot(1, 1, 1, projection=helio_smap)
         helio_smap.plot_settings["title"] = str(
             np.round(helio_smap.meta['wavelnth'], 2)) + " MHz " + helio_smap.date.isot
-        helio_smap.plot(axes=ax0,cmap='viridis')
+        im = helio_smap.plot(axes=ax0,cmap='viridis')
         # ax1.plot(dslice)
         if fits_in[-10:] != "model.fits":
             helio_smap.draw_limb(color='r')
@@ -57,19 +57,22 @@ def plot_fits(fits_in, out_png=None):
         b = Ellipse((200, 200), Angle(smap.meta['BMAJ'] * u.deg).arcsec / abs(smap.scale[0].to(u.arcsec / u.pix).value),
                     Angle(smap.meta['BMIN'] * u.deg).arcsec / abs(smap.scale[1].to(u.arcsec / u.pix).value),
                     angle=(90 + smap.meta['BPA']) - solar_PA, fill=False, color='w', ls='--')
+        cbar = fig.colorbar(im, ax=ax0)
+        cbar.set_label("Intensity (Jy/beam)")
     else:
 
         ax0 = fig.add_subplot(1, 1, 1, projection=smap)
-        smap.plot(axes=ax0)
+        im = smap.plot(axes=ax0)
 
         b = Ellipse((smap.reference_pixel[0].value, smap.reference_pixel[1].value),
                     Angle(smap.meta['BMAJ'] * u.deg).arcsec / abs(smap.scale[0].to(u.arcsec / u.pix).value),
                     Angle(smap.meta['BMIN'] * u.deg).arcsec / abs(smap.scale[1].to(u.arcsec / u.pix).value),
                     angle=90 + smap.meta['BPA'], fill=False, color='w', ls='--')
-
+        cbar = fig.colorbar(im, ax=ax0)
+        cbar.set_label("PSF")
     ax0.add_patch(b)
 
-    plt.colorbar()
+    # plt.colorbar()
     print("Saving to {}".format(out_png))
     plt.savefig(out_png)
     # plt.close()

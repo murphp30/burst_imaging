@@ -1,9 +1,13 @@
 #!/usr/bin/env python
+import matplotlib
+matplotlib.use('TkAgg')
 
 import argparse
 
 import astropy.units as u
+import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
+plt.rcParams.update({'font.size':14})
 import numpy as np
 import pandas as pd
 
@@ -108,10 +112,18 @@ for freq in freqs:
         ax.scatter(tarr.plot_date[max_peak],
                    bf.freqs[loc].to(u.MHz).value,
                    color='r', marker='+')
-        ax.hlines([bf.freqs[loc-8].to(u.MHz).value, bf.freqs[loc+8].to(u.MHz).value], tarr.plot_date[0], tarr.plot_date[-1], color='r')
+        # ax.hlines([bf.freqs[loc-8].to(u.MHz).value, bf.freqs[loc+8].to(u.MHz).value], tarr.plot_date[0], tarr.plot_date[-1], color='r')
 
-# fig, ax = plt.subplots(figsize=(13, 10))
-# ax.plot(tarr.plot_date, dslice)
+fig, ax = plt.subplots(figsize=(13, 10))
+ax.plot(tarr.plot_date, dslice)
+ax.plot(tarr.plot_date[peaks], dslice[peaks], 'o', color='r')
+ax.set_yscale('log')
+ax.xaxis_date()
+date_format = dates.DateFormatter("%H:%M:%S")
+ax.xaxis.set_major_formatter(date_format)
+ax.set_ylabel('Intensity (arbitrary)')
+ax.set_xlabel('Time (UTC)')
+plt.cloes()
 # # plt.plot(tarr.plot_date, smooth)
 # ax.vlines(tarr.plot_date[max_peak], np.min(dslice), dslice[max_peak], color='r', zorder=1000)
 # ax.xaxis_date()
@@ -130,7 +142,28 @@ save_pickle = save_path + "/peak_times_30MHz_{}_{}.pkl".format(trange.start.isot
 # with open("peak_times.txt", 'a') as peak_file:
 #     peak_file.write(max_peak_time.isot)
 #     peak_file.write('\n')
-peaks_df.to_pickle(save_pickle)
+# peaks_df.to_pickle(save_pickle)
 # max_peaks_df.to_pickle(save_pickle)
 # plt.close()
+fig = plt.figure(figsize=(10, 8))
+gs = gridspec.GridSpec(ncols=1, nrows=2, height_ratios=[1,2])
+ax0 = fig.add_subplot(gs[1])
+ax1 = fig.add_subplot(gs[0], sharex=ax0)
+bf.plot(ax=ax0, bg_subtract=True, clip_interval=clip)
+# ax0.hlines(bf.freqs[loc].to(u.MHz).value, tarr.plot_date[0], tarr.plot_date[-1], color='r')
+ax0.scatter(tarr.plot_date[peaks],
+           np.ones(len(peaks)) * bf.freqs[loc].to(u.MHz).value,
+           color='w', marker='o')
+ax0.scatter(tarr.plot_date[max_peak],
+           bf.freqs[loc].to(u.MHz).value,
+           color='r', marker='+')
+ax1.plot(tarr.plot_date, dslice)
+ax1.plot(tarr.plot_date[peaks], dslice[peaks], 'o', color='r')
+ax1.plot(tarr.plot_date[max_peak], dslice[max_peak], '+', color='w')
+ax1.set_yscale('log')
+ax1.set_ylabel('Intensity (arbitrary)')
+ax1.tick_params('x', labelbottom=False)
+plt.tight_layout()
+plt.savefig(save_path + "/peak_times_30MHz_wlightcurve_{}_{}.png".format(trange.start.isot[:-4].replace(':', ''),
+                                                      trange.end.isot[11:-4].replace(':', '')))
 plt.show()

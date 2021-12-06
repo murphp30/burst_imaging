@@ -404,7 +404,7 @@ def plot_fit(vis, data, fit, plot=True, save=True, outdir="vis_fits/30MHz/", t=0
                 ]
     labels = fit.var_names #['I0', 'x0', 'y0', 'sig_x', 'sig_y']#, 'theta']  # , 'lnsigma']
     val_dict = fit.params.valuesdict()
-    corner.corner(fit.flatchain, labels=labels)  # , truths=truths)
+    corner.corner(fit.flatchain, labels=labels, label_kwargs={'fontsize':14})  # , truths=truths)
     if save:
         plt.savefig(outdir+"visibility_fit_corner_{}MHz_{}.png".format(int(np.round(vis.freq.value)), vis.time.isot[0]))
     if not plot:
@@ -414,7 +414,7 @@ def plot_fit(vis, data, fit, plot=True, save=True, outdir="vis_fits/30MHz/", t=0
         ax[i].plot(fit.chain[:, :, i], 'k', alpha=0.3)
         # ax[i].hlines(truths[i], 0, fit.chain.shape[0], colors='r', zorder=100)
         ax[i].hlines(val_dict[fit.var_names[i]], 0, fit.chain.shape[0], colors='cyan', zorder=100)
-        ax[i].set_ylabel(labels[i])
+        ax[i].set_ylabel(labels[i], fontsize=14)
     ax[-1].set_xlabel("Step Number")
     if save:
         plt.savefig(outdir+"visibility_fit_walkers_{}MHz_{}.png".format(int(np.round(vis.freq.value)), vis.time.isot[0]))
@@ -426,6 +426,9 @@ def plot_fit(vis, data, fit, plot=True, save=True, outdir="vis_fits/30MHz/", t=0
     plt.figure()
     rot_map.plot()
     rot_map.draw_limb()
+    map_save_name = outdir + 'visibility_fit_recreated_map_{}MHz_{}.fits'.format(int(np.round(vis.freq.value)), vis.time.isot[0])
+    if not os.path.isfile(map_save_name):
+        rot_map.save(map_save_name)
     if save:
         plt.savefig(outdir + 'visibility_fit_recreated_map_{}MHz_{}.png'.format(int(np.round(vis.freq.value)), vis.time.isot[0]))
     if not plot:
@@ -477,8 +480,8 @@ def recreate_map(vis, fit, pix=1024, scale=5*u.arcsec, t=0):
 
 def make_init_parameters(data):
     init_params = {"I0": np.max(np.abs(data)),
-                   "x0": Angle(-1800 * u.arcsec).rad, #-0.00769764,#
-                   "y0": Angle(60 * u.arcsec).rad, #0.00412132,#
+                   "x0": Angle(-800 * u.arcsec).rad, #-0.00769764,#
+                   "y0": Angle(1300 * u.arcsec).rad, #0.00412132,#
                    "sig_x": Angle(5 * u.arcmin).rad / (2 * np.sqrt(2 * np.log(2))),
                    "sig_y": Angle(7 * u.arcmin).rad / (2 * np.sqrt(2 * np.log(2))),
                    "theta": -np.pi/4}
@@ -672,7 +675,7 @@ def main(msin, trange, plot=False):
     # Only vary x0 and y0
     # pdb.set_trace()
     fit_phase = minimize(residual, fit_amp.params,
-                         args=(vis.uvw[0,:275, 0], vis.uvw[0, :275, 1], gauss0[:275], None, "phase"))
+                         args=(vis.uvw[0,:275, 0], vis.uvw[0, :275, 1], gauss0[:275], error[:275], "phase"))
     # assume first guess is correct and update min, max parameter values
     # don't do this because the first guess is rarely correct
     # fit_phase.params['x0'].min = fit_phase.params['x0'] - (R_av_ang_asec.rad / 2)
@@ -696,7 +699,7 @@ def main(msin, trange, plot=False):
     # Fit everything MCMC
     # Make a ball around parameters determined above
     # pdb.set_trace()
-    nwalkers = 200
+    nwalkers = 300
     walker_init_pos = np.array((fit_phase.params['I0'].value,
                                 fit_phase.params['x0'].value,
                                 fit_phase.params['y0'].value,
@@ -711,7 +714,7 @@ def main(msin, trange, plot=False):
     print("Fitting for {}".format(vis.time.isot))
     # pdb.set_trace()
 
-    fit = minimize(residual, fit_phase.params, method='emcee', pos=walker_init_pos,
+    fit = minimize(residual, fit_phase.params, method='emcee', pos=walker_init_pos, workers=os.cpu_count(),
                    steps=5000, burn=500, thin=20, nwalkers=nwalkers, progress=True, is_weighted=False,
                    args=(vis.uvw[0,np.argwhere((1/weights) < (3 * np.std(1/weights) + np.mean(1/weights))), 0],
                          vis.uvw[0,np.argwhere((1/weights) < (3 * np.std(1/weights) + np.mean(1/weights))), 1], good_gauss0, None, "all"))

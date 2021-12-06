@@ -77,3 +77,4 @@ if __name__ == "__main__":
             wsclean_string = wsclean_command(msin, niter, int0, int1, ints_out, output + t)
             print("Now imaging burst {} out of {}".format(i, len(df[df.columns[0]])))
             os.system(wsclean_string)
+    

@@ -21,6 +21,7 @@ from scipy.optimize import minimize_scalar
 from sunpy.coordinates import frames, sun
 from sunpy.sun.constants import average_angular_size as R_sun_ang
 
+plt.rcParams.update({'font.size': 14})
 
 def ellipses(x, y, w, h=None, rot=0.0, c='b', vmin=None, vmax=None, **kwargs):
     """
@@ -177,8 +178,8 @@ else:
 bad_sig = Angle(15*u.arcmin).rad/(2 * np.sqrt(2 * np.log(2))) #20arcmins
 best_times_file = "best_times.txt" #"good_enough_times.txt"#
 best_times = np.loadtxt(best_times_file, dtype=str)
-# df = df.loc[df.index.intersection(best_times)]
-
+df = df.loc[df.index.intersection(best_times)]
+df = df[~df.index.duplicated(keep='first')] #weird duplicated index
 times = Time(list(df.index), format='isot')
 area_times = Time([*area_df.index])
 
@@ -388,7 +389,10 @@ plt.figure(figsize=(14,10))
 ax1 = plt.subplot(2,2,1)
 ax1.errorbar(np.abs(xs), fwhms[0], fwhm_errors[0], dx, ls='', marker='o', label='FWHM X')
 ax1.errorbar(np.abs(xs), fwhms[1], fwhm_errors[1], dx, ls='', marker='o', label='FWHM Y')
+ax1.set_ylim(7,22)
+ax1.annotate('a)', (0.05, 0.95), xycoords='axes fraction' )
 ax1.legend()
+
 plt.setp(ax1.get_xticklabels(), visible=False)
 # plt.setp(ax1.get_xticklines(), visible=False)
 
@@ -396,6 +400,7 @@ ax2 = plt.subplot(2,2,2, sharey=ax1)
 ax2.errorbar(np.abs(ys), fwhms[0], fwhm_errors[0], dy, ls='', marker='o', label='FWHM X')
 ax2.errorbar(np.abs(ys), fwhms[1], fwhm_errors[1], dy, ls='', marker='o', label='FWHM Y')
 ax2.legend()
+ax2.annotate('b)', (0.05, 0.95), xycoords='axes fraction' )
 plt.setp(ax2.get_xticklabels(), visible=False)
 # plt.setp(ax2.get_xticklines(), visible=False)
 plt.setp(ax2.get_yticklabels(), visible=False)
@@ -403,8 +408,10 @@ plt.setp(ax2.get_yticklabels(), visible=False)
 
 ax3 = plt.subplot(2,2,3, sharex=ax1)
 ax3.errorbar(np.abs(xs), fwhms[2], fwhm_errors[2], dx, ls='', marker='o')
+ax3.annotate('c)', (0.05, 0.95), xycoords='axes fraction' )
 ax4 = plt.subplot(2,2,4, sharex=ax2, sharey=ax3)
 ax4.errorbar(np.abs(ys), fwhms[2], fwhm_errors[2], dy, ls='', marker='o')
+ax4.annotate('d)', (0.05, 0.95), xycoords='axes fraction' )
 plt.setp(ax4.get_yticklabels(), visible=False)
 # plt.setp(ax4.get_yticklines(), visible=False)
 
@@ -412,48 +419,62 @@ ax1.set_ylabel('FWHM (arcmin)')
 ax3.set_xlabel('Absolute Solar X (arcsec)')
 ax3.set_ylabel('Aspect ratio')
 ax4.set_xlabel('Absolute Solar Y (arcsec)')
-# plt.savefig('fwhm_comparison.png')
 plt.tight_layout()
+plt.savefig('fwhm_comparison.png')
+
+hours = (times-times[0]).sec/60/60
+plt.figure(figsize=(9,7))
+plt.errorbar(hours, fwhms[0], fwhm_errors[0], ls='', marker='o', label='FWHM X')
+plt.errorbar(hours, fwhms[1], fwhm_errors[1], ls='', marker='o', label='FWHM Y')
+plt.legend()
+plt.xlabel('Hours from observation start')
+plt.ylabel('FWHM')
+plt.savefig('fwhm_time_comp.png')
 
 bins = np.arange(6, 21, step=1)
 n_x, bins_x = np.histogram(fwhm_x.arcmin, bins=bins)
 n_y, bins_y = np.histogram(fwhm_y.arcmin, bins=bins)
 mean_x, mean_y = np.mean(fwhm_x.arcmin), np.mean(fwhm_y.arcmin)
-fig, ax = plt.subplots(figsize=(9,7))
-ax.hist(fwhm_x.arcmin, bins = bins_x, alpha=0.5, label="FWHMx")
-ax.hist(fwhm_y.arcmin, bins = bins_y, alpha=0.5, label="FWHMy")
-ax.vlines(bins_x[:-1], 0, n_x, colors='b', alpha=0.25)
-ax.vlines(bins_y[:-1], 0, n_y, colors='r', alpha=0.25)
 
-ax.axvline(mean_x, c='b', ls='--')
-ax.axvline(mean_y, c='r', ls='--')
-ax.set_xlabel('FWHM (arcmin)')
-ax.set_ylabel('Number of bursts')
-ax.legend()
+fig, ax = plt.subplots(1,3, sharey=True, figsize=(18,6))
+ax[0].hist(fwhm_x.arcmin, bins = bins_x, alpha=0.5, label="FWHMx")
+ax[0].hist(fwhm_y.arcmin, bins = bins_y, alpha=0.5, label="FWHMy")
+ax[0].vlines(bins_x[:-1], 0, n_x, colors='b', alpha=0.25)
+ax[0].vlines(bins_y[:-1], 0, n_y, colors='r', alpha=0.25)
+
+ax[0].axvline(mean_x, c='b', ls='--')
+ax[0].axvline(mean_y, c='r', ls='--')
+ax[0].set_xlabel('FWHM (arcmin)')
+ax[0].set_ylabel('Number of bursts')
+ax[0].legend()
+ax[0].annotate('a)', (0.05, 0.95), xycoords='axes fraction' )
 # plt.savefig('burst_fwhm_histogram.png')
 
 mean_r = np.mean(fwhm_ratio)
 n_r, bins_r = np.histogram(fwhm_ratio)
-fig, ax = plt.subplots(figsize=(9,7))
-ax.hist(fwhm_ratio, bins = bins_r, alpha=0.5, color='purple')
-ax.vlines(bins_r[:-1], 0, n_r, colors='purple', alpha=0.25)
-ax.axvline(mean_r, c='purple', ls='--')
-ax.set_xlabel('Aspect Ratio')
-ax.set_ylabel('Number of bursts')
+# fig, ax = plt.subplots(figsize=(9,7))
+ax[1].hist(fwhm_ratio, bins = bins_r, alpha=0.5, color='purple')
+ax[1].vlines(bins_r[:-1], 0, n_r, colors='purple', alpha=0.25)
+ax[1].axvline(mean_r, c='purple', ls='--')
+ax[1].set_xlabel('Aspect Ratio')
+ax[1].annotate('b)', (0.05, 0.95), xycoords='axes fraction' )
+# ax[1].set_ylabel('Number of bursts')
 # plt.savefig('burst_fwhm_ratio_histogram.png')
 # plt.close('all')
 print("Mean FWMHx: {} arcmin \n Mean FWHMy: {} arcmin \n Mean Aspect Ratio: {}".format(*np.round((mean_x, mean_y, mean_r), 2)))
 
 mean_rel = np.mean(relative_angles)
 n_rel, bins_rel = np.histogram(relative_angles)
-fig, ax = plt.subplots(figsize=(9,7))
-ax.hist(relative_angles, bins = bins_rel, alpha=0.5, color='green')
-ax.vlines(bins_rel[:-1], 0, n_rel, colors='green', alpha=0.25)
-ax.axvline(mean_rel, c='green', ls='--')
-ax.set_xlabel('Relative Angle (degrees)')
-ax.set_ylabel('Number of bursts')
+# fig, ax = plt.subplots(figsize=(9,7))
+ax[2].hist(relative_angles, bins = bins_rel, alpha=0.5, color='green')
+ax[2].vlines(bins_rel[:-1], 0, n_rel, colors='green', alpha=0.25)
+ax[2].axvline(mean_rel, c='green', ls='--')
+ax[2].set_xlabel('Relative Angle (degrees)')
+ax[2].annotate('c)', (0.05, 0.95), xycoords='axes fraction' )
+# ax[2].set_ylabel('Number of bursts')
 # plt.savefig('burst_relative_angle_histogram.png')
-
+plt.tight_layout()
+plt.savefig('burst_3histogram.png')
 time_from_start = np.arange(0,3, 0.16)
 
 # fig, ax = plt.subplots()
@@ -464,5 +485,6 @@ time_from_start = np.arange(0,3, 0.16)
 #     fig.canvas.draw()
 #     plt.pause(0.5)
 #     plt.close()
+
 
 plt.show()
