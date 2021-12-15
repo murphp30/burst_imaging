@@ -5,6 +5,8 @@ import glob
 import os
 
 import astropy.units as u
+import matplotlib
+matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
